@@ -91,8 +91,8 @@ what is wrong when a probe does not reach it. On it:
   workloads, keeps packages under `~/.s3l-build/nuget`, adds the mirrored feeds to the host's NuGet sources, and
   builds the images the settings name from the Dockerfiles under [deploy/images](deploy/images), which it writes under
   `~/.s3l-build/images` — once; an image already there is kept, and a sweep of stale images leaves them alone. Where
-  Xcode is, it also puts [XcodeGen](https://github.com/yonaskolb/XcodeGen) under `~/.s3l-build/xcodegen`, from its
-  release zip rather than Homebrew, which would want a password.
+  Xcode is, it also puts [XcodeGen](https://github.com/yonaskolb/XcodeGen) under `~/.s3l-build/xcodegen`, from the
+  release zip the settings name, checked against its SHA-256 — rather than Homebrew, which would want a password.
 
 The account's login shell does not matter: every script runs in `/bin/sh`, with `/usr/local/bin`, `/opt/homebrew/bin`
 and `~/.orbstack/bin` on its path, which a non-interactive shell would not look in.
@@ -123,7 +123,7 @@ A host that is this machine — `localhost` — is worked without ssh, straight 
 | `Workloads` | the MAUI set | The workloads that SDK gets. |
 | `Feeds` | none | NuGet feeds of this machine mirrored to the host and added to its sources by name. |
 | `Images` | `dotnet android` | The images provisioning builds for the `linux` and `android` kinds; an empty list builds none. |
-| `HasXcodeGen` | `true` | Whether provisioning puts XcodeGen under the root of a host that has Xcode. |
+| `HasXcodeGen`, `XcodeGenVersion`, `XcodeGenSha256` | `true`, `2.46.0`, its SHA-256 | Whether provisioning puts XcodeGen under the root of a host that has Xcode, which release, and the checksum its zip must match; an empty checksum checks nothing. |
 | `Sync` | `rsync` | What carries a copy: `rsync`, a mirror before every run, or `mutagen`, a session per workspace that keeps it mirrored; `Mutagen` names the program. |
 | `Excludes` | `bin obj artifacts TestResults BenchmarkDotNet.Artifacts node_modules .DS_Store` | Folders a delivery never sends. |
 | `TransferSeconds`, `RunSeconds`, `ProbeSeconds` | 600, 3600, 20 | How long a delivery, a run, a probe may take. |

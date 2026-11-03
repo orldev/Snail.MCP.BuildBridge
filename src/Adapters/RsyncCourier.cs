@@ -23,8 +23,9 @@ public sealed class RsyncCourier(IPrograms programs, ICopies copies, RemoteShell
         if (!made.IsSuccess)
             return Answer.Failed<Delivery>(Messages.DeliveryFailed(host.Name, Rsync.Reason(made)));
 
-        var ignored = await copies.IgnoredAsync(copy, cancellationToken);
-        string excludes = string.Join('\n', Excludes(copy, ignored)) + '\n';
+        var ignoredHere = await copies.IgnoredAsync(copy, cancellationToken);
+        var ignoredThere = await IgnoredOnHostAsync(host, key, cancellationToken);
+        string excludes = string.Join('\n', Excludes(copy, [.. ignoredHere, .. ignoredThere]).Distinct(StringComparer.Ordinal)) + '\n';
         var started = clock.GetTimestamp();
 
         var arguments = Rsync.Arguments(options.Value, host, isDryRun, true, $"{copy.Path}/", $"{RemoteShell.Rsync(host, key.Folder)}/");
@@ -40,6 +41,19 @@ public sealed class RsyncCourier(IPrograms programs, ICopies copies, RemoteShell
     /// <inheritdoc/>
     /// <remarks>rsync keeps nothing between deliveries, so there is nothing to let go of.</remarks>
     public Task ForgetAsync(Host host, WorkspaceKey key, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>What git ignores in the workspace on the host: what the host built for itself under an ignored path, which exists there and not here, and which --delete would otherwise take.</summary>
+    /// <remarks>Proven by a chaos test on 2026-11-03: a folder the host made under an ignored path absent on this machine was gone after the next delivery.</remarks>
+    private async Task<IReadOnlyList<string>> IgnoredOnHostAsync(Host host, WorkspaceKey key, CancellationToken cancellationToken)
+    {
+        string script = $"cd {RemoteShell.Under(host, key.Folder)} 2>/dev/null && git ls-files --others --ignored --exclude-standard --directory -z 2>/dev/null";
+        var words = shell.Command(host, RemoteShell.Prelude(host) + script);
+        var run = await programs.RunAsync(words[0], words[1..], null, TimeSpan.FromSeconds(options.Value.ProbeSeconds), cancellationToken);
+        if (!run.IsSuccess)
+            return [];
+
+        return run.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries);
+    }
 
     /// <summary>What a delivery leaves out, one pattern each: what a build makes again, a worktree's dead .git file, and what git ignores, anchored at the copy's root.</summary>
     public IReadOnlyList<string> Excludes(LocalCopy copy, IReadOnlyList<string> ignored)

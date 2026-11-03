@@ -21,7 +21,7 @@ public sealed class MutagenCourierTests
         return new MutagenCourier(Programs, Copies, new RsyncCourier(Programs, Copies, shell, options, TimeProvider.System), shell, options, TimeProvider.System);
     }
 
-    private static Host LocalHost() => new("here", "localhost", TestFolder.Create());
+    private static Host LocalHost() => new($"here-{Path.GetRandomFileName()[..6]}", "localhost", TestFolder.Create());
 
     private static async Task<LocalCopy> CopyAsync(string repository) => (await Copies.ReadAsync(repository, CancellationToken.None)).Value!;
 
@@ -87,6 +87,18 @@ public sealed class MutagenCourierTests
         string session = MutagenCourier.SessionOf(new Host("mini", "dev@mini"), new WorkspaceKey("Snail.MCP.BuildBridge", "feat/web-3.0"));
 
         Assert.Equal("s3l-snail-mcp-buildbridge-feat-web-3-0-mini", session);
+    }
+
+    [Fact]
+    public void SessionOf_TwoNamesAlikeForSixtyFourLetters_AreToldApart()
+    {
+        string stem = new('a', 70);
+        string one = MutagenCourier.SessionOf(new Host("mini", "dev@mini"), new WorkspaceKey(stem, "one"));
+        string other = MutagenCourier.SessionOf(new Host("mini", "dev@mini"), new WorkspaceKey(stem, "two"));
+
+        Assert.NotEqual(one, other);
+        Assert.True(one.Length <= 64);
+        Assert.Matches("^[a-z0-9-]+$", one);
     }
 
     [Fact]

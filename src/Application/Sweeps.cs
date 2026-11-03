@@ -112,11 +112,21 @@ public sealed class Sweeps(IBuilder builder, Logs logs, IOptions<BuildOptions> o
 
     private int EraseOldLogs(DateTimeOffset now)
     {
-        var old = OldLogs(now);
-        foreach (var file in old)
-            File.Delete(file);
+        int erased = 0;
+        foreach (var file in OldLogs(now))
+        {
+            try
+            {
+                File.Delete(file);
+                erased++;
+            }
+            catch (Exception kept) when (kept is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+        }
 
-        return old.Count;
+        return erased;
     }
 
     private void Forget(DateTimeOffset now)

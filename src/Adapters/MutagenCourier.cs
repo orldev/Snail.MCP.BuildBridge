@@ -13,9 +13,10 @@ namespace Snail.MCP.BuildBridge.Adapters;
 /// <remarks>
 /// <para>
 /// The session is one-way: the workspace is a replica of the copy, and what a build writes there under an ignored
-/// folder stays, as it does with rsync. It ignores what rsync would exclude, and since those patterns are fixed at
-/// creation, a label on the session carries a hash of them with the copy's path: a session whose label no longer
-/// matches is terminated and made again, so an ignore added to .gitignore reaches the host.
+/// folder stays, as it does with rsync. It ignores what rsync would exclude and every pattern of the copy's .gitignore
+/// files, so a folder the host makes for itself under an ignored path that does not exist here is kept too. Since the
+/// patterns are fixed at creation, a label on the session carries a hash of them with the copy's path: a session whose
+/// label no longer matches is terminated and made again, so an ignore added to .gitignore reaches the host.
 /// </para>
 /// <para>
 /// Mutagen runs its own daemon on this machine, started on the first command and kept alive between runs of this
@@ -43,7 +44,8 @@ public sealed class MutagenCourier(IPrograms programs, ICopies copies, RsyncCour
             return Answer.Failed<Delivery>(Messages.DeliveryFailed(host.Name, Rsync.Reason(made)));
 
         var ignored = await copies.IgnoredAsync(copy, cancellationToken);
-        var patterns = rsync.Excludes(copy, ignored);
+        var gitignore = await copies.IgnorePatternsAsync(copy, cancellationToken);
+        var patterns = rsync.Excludes(copy, ignored).Concat(gitignore).Distinct(StringComparer.Ordinal).ToList();
         string session = SessionOf(host, key);
         string beta = BetaOf(host, key);
         string shape = ShapeOf(copy.Path, beta, patterns);
@@ -72,7 +74,7 @@ public sealed class MutagenCourier(IPrograms programs, ICopies copies, RsyncCour
     public async Task ForgetAsync(Host host, WorkspaceKey key, CancellationToken cancellationToken) =>
         await TerminateAsync(SessionOf(host, key), cancellationToken);
 
-    /// <summary>The session's name for a workspace on a host: letters, digits and dashes, as Mutagen names sessions.</summary>
+    /// <summary>The session's name for a workspace on a host: letters, digits and dashes, as Mutagen names sessions, cut to its 64 with a hash of the whole so two long names never share one.</summary>
     public static string SessionOf(Host host, WorkspaceKey key)
     {
         string raw = $"s3l-{key.Repository}-{key.Branch}-{host.Name}".ToLowerInvariant();
@@ -80,8 +82,13 @@ public sealed class MutagenCourier(IPrograms programs, ICopies copies, RsyncCour
         string name = new([.. letters]);
         while (name.Contains("--", StringComparison.Ordinal))
             name = name.Replace("--", "-", StringComparison.Ordinal);
+        name = name.TrimEnd('-');
+        if (name.Length <= 64)
+            return name;
 
-        return name.Length > 64 ? name[..64].TrimEnd('-') : name.TrimEnd('-');
+        string hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(raw)))[..8];
+
+        return $"{name[..55].TrimEnd('-')}-{hash}";
     }
 
     /// <summary>The hash of what shapes a session: where it reads, where it writes and what it ignores; a session with another hash is made again.</summary>

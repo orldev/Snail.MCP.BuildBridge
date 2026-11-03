@@ -6,10 +6,25 @@ namespace Snail.MCP.BuildBridge.Domain;
 /// <param name="Feeds">The names of the NuGet feeds mirrored under the root's feeds folder, each added to the host's NuGet sources by that name.</param>
 /// <param name="Images">The images built on the host for the kinds that run in a container, by name: dotnet, android.</param>
 /// <param name="HasXcodeGen">Whether XcodeGen is put under the root where Xcode is, for projects generated from a spec.</param>
-public sealed record BuilderManifest(string SdkVersion, IReadOnlyList<string> Workloads, IReadOnlyList<string> Feeds, IReadOnlyList<string> Images, bool HasXcodeGen = true)
+/// <param name="XcodeGenVersion">The XcodeGen release fetched, so every host runs the same one.</param>
+/// <param name="XcodeGenSha256">The SHA-256 of that release's zip, checked before it is unpacked; empty checks nothing.</param>
+public sealed record BuilderManifest(string SdkVersion, IReadOnlyList<string> Workloads, IReadOnlyList<string> Feeds, IReadOnlyList<string> Images, bool HasXcodeGen = true, string XcodeGenVersion = BuilderManifest.DefaultXcodeGenVersion, string XcodeGenSha256 = BuilderManifest.DefaultXcodeGenSha256)
+{
+    /// <summary>The XcodeGen release the settings name unless they say otherwise.</summary>
+    public const string DefaultXcodeGenVersion = "2.46.0";
+
+    /// <summary>The SHA-256 of that release's zip, measured on 2026-11-03.</summary>
+    public const string DefaultXcodeGenSha256 = "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806";
+}
+
+/// <summary>The folders every root has, and the rest of what a manifest knows that is not a parameter.</summary>
+public static class BuilderManifests
 {
     /// <summary>The folders every root has.</summary>
     public static IReadOnlyList<string> Folders { get; } = ["bin", "workspaces", "jobs", "nuget", "derived", "feeds", "images", "containers"];
+
+    /// <summary>Where a XcodeGen release is fetched from, by version.</summary>
+    public static string XcodeGenUrlOf(string version) => $"https://github.com/yonaskolb/XcodeGen/releases/download/{version}/xcodegen.zip";
 }
 
 /// <summary>An image a host builds for a kind that runs in a container: the toolchain of the case, made once and reused by every run.</summary>

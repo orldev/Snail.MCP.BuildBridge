@@ -108,4 +108,6 @@ internal sealed class FakeCopies : ICopies
         Task.FromResult(Copy is { } copy ? Answer.Ok(copy) : Answer.Failed<LocalCopy>(Messages.NotACopy(path)));
 
     public Task<IReadOnlyList<string>> IgnoredAsync(LocalCopy copy, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<string>>([]);
+
+    public Task<IReadOnlyList<string>> IgnorePatternsAsync(LocalCopy copy, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<string>>([]);
 }

@@ -4,7 +4,8 @@ using Snail.MCP.BuildBridge.Domain;
 namespace Snail.MCP.BuildBridge.Application;
 
 /// <summary>A working copy of this machine delivered to a host's workspace.</summary>
-public sealed class Deliveries(Hosts hosts, ICopies copies, IBuilder builder)
+/// <remarks>A delivery takes the workspace's turn like a run does, so it never pulls files from under a build; a dry run changes nothing and waits for nobody.</remarks>
+public sealed class Deliveries(Hosts hosts, ICopies copies, IBuilder builder, WorkspaceTurns turns)
 {
     /// <summary>Delivers the copy <paramref name="path"/> lies in to the host named, or lists what a delivery would send.</summary>
     public async Task<Answer<Delivery>> DeliverAsync(string path, string? host, bool isDryRun, CancellationToken cancellationToken)
@@ -17,6 +18,10 @@ public sealed class Deliveries(Hosts hosts, ICopies copies, IBuilder builder)
         if (ready.Value is not { } state)
             return Answer.Failed<Delivery>(ready.Error!, ready.Hint);
 
-        return await builder.DeliverAsync(state.Host, found, isDryRun, cancellationToken);
+        if (isDryRun)
+            return await builder.DeliverAsync(state.Host, found, true, cancellationToken);
+
+        using (await turns.TakeAsync(state.Host, found.Workspace, () => { }, cancellationToken))
+            return await builder.DeliverAsync(state.Host, found, false, cancellationToken);
     }
 }

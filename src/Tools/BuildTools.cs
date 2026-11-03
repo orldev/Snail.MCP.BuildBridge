@@ -100,10 +100,9 @@ public sealed class BuildTools(Hosts hosts, Deliveries deliveries, Provisioning 
         if (!full.StartsWith(logs.Folder + Path.DirectorySeparatorChar, StringComparison.Ordinal) || !File.Exists(full))
             return ToolResponse.Failure(Messages.NotALog(log, logs.Folder), null);
 
-        var all = await File.ReadAllLinesAsync(full, cancellationToken);
-        var tail = all.TakeLast(Math.Clamp(lines, 1, MaxLogLines));
+        var tail = await Logs.TailAsync(full, Math.Clamp(lines, 1, MaxLogLines), cancellationToken);
 
-        return ToolResponse.Success(new JsonObject { ["log"] = full, ["lines"] = all.Length, ["text"] = string.Join('\n', tail) });
+        return ToolResponse.Success(new JsonObject { ["log"] = full, ["lines"] = tail.Count, ["text"] = string.Join('\n', tail) });
     }
 
     /// <summary>Stops a running job.</summary>

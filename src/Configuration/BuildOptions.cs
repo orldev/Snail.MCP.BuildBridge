@@ -75,6 +75,12 @@ public sealed class BuildOptions
     /// <summary>Whether provisioning puts XcodeGen under the root of a host that has Xcode, so a project with a project.yml is generated there before a build.</summary>
     public bool HasXcodeGen { get; set; } = true;
 
+    /// <summary>The XcodeGen release provisioning fetches from GitHub, the same on every host.</summary>
+    public string XcodeGenVersion { get; set; } = BuilderManifest.DefaultXcodeGenVersion;
+
+    /// <summary>The SHA-256 of that release's zip, checked before it is unpacked; empty checks nothing.</summary>
+    public string XcodeGenSha256 { get; set; } = BuilderManifest.DefaultXcodeGenSha256;
+
     /// <summary>The images provisioning builds on a host for the kinds that run in a container: dotnet for linux, android for android.</summary>
     public string[] Images { get; set; } = [BuildImage.Dotnet, BuildImage.Android];
 
@@ -97,7 +103,7 @@ public sealed class BuildOptions
     public IReadOnlyList<Host> ToHosts() => [.. Hosts.Select(host => host.ToHost())];
 
     /// <summary>What a host is provisioned with, as the domain carries it.</summary>
-    public BuilderManifest ToManifest() => new(SdkVersion, Workloads, [.. Feeds.Select(feed => feed.Name)], Images, HasXcodeGen);
+    public BuilderManifest ToManifest() => new(SdkVersion, Workloads, [.. Feeds.Select(feed => feed.Name)], Images, HasXcodeGen, XcodeGenVersion, XcodeGenSha256);
 
     /// <summary>Whether the sync setting names a means this server knows.</summary>
     public bool HasKnownSync => Sync is Delivery.Rsync or Delivery.Mutagen;

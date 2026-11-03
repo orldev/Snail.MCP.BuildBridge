@@ -337,7 +337,7 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
     internal static string ProvisionScript(Host host, BuilderManifest manifest)
     {
         string root = RemoteShell.Root(host);
-        string folders = string.Join(' ', BuilderManifest.Folders.Select(folder => RemoteShell.Under(host, folder)));
+        string folders = string.Join(' ', BuilderManifests.Folders.Select(folder => RemoteShell.Under(host, folder)));
         string sdk = RemoteShell.Quoted(manifest.SdkVersion);
         string workloads = RemoteShell.Quoted(string.Join(' ', manifest.Workloads));
         string feeds = RemoteShell.Quoted(string.Join(' ', manifest.Feeds));
@@ -377,13 +377,22 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
             xcode="$(xcodebuild -version 2>/dev/null | head -n 1)"
             if [ -n "$xcode" ]; then echo "s3l-step xcode 1 $xcode"; else echo "s3l-step xcode 0 {{{Messages.InstallXcode}}}"; fi
             if [ -n "$xcode" ] && [ {{{(manifest.HasXcodeGen ? 1 : 0)}}} = 1 ]; then
-              if [ ! -x "$ROOT/bin/xcodegen" ]; then
-                mkdir -p "$ROOT/xcodegen" && curl -fsSL {{{XcodeGenUrl}}} -o "$ROOT/xcodegen/xcodegen.zip" && unzip -qo "$ROOT/xcodegen/xcodegen.zip" -d "$ROOT/xcodegen" && rm -f "$ROOT/xcodegen/xcodegen.zip"
-                real="$(find "$ROOT/xcodegen" -type f -path '*/bin/xcodegen' | head -n 1)"
-                if [ -n "$real" ]; then chmod +x "$real"; printf '#!/bin/sh\nexec "%s" "$@"\n' "$real" > "$ROOT/bin/xcodegen"; chmod +x "$ROOT/bin/xcodegen"; fi
+              XCODEGEN={{{RemoteShell.Quoted(manifest.XcodeGenVersion)}}}
+              XCODEGEN_SHA={{{RemoteShell.Quoted(manifest.XcodeGenSha256)}}}
+              have="$("$ROOT/bin/xcodegen" --version 2>/dev/null | sed 's/^Version: //')"
+              if [ "$have" != "$XCODEGEN" ]; then
+                rm -rf "$ROOT/xcodegen" "$ROOT/bin/xcodegen"; mkdir -p "$ROOT/xcodegen"
+                if curl -fsSL {{{RemoteShell.Quoted(BuilderManifests.XcodeGenUrlOf(manifest.XcodeGenVersion))}}} -o "$ROOT/xcodegen/xcodegen.zip"; then
+                  if [ -z "$XCODEGEN_SHA" ] || echo "$XCODEGEN_SHA  $ROOT/xcodegen/xcodegen.zip" | shasum -a 256 -c - >/dev/null 2>&1; then
+                    unzip -qo "$ROOT/xcodegen/xcodegen.zip" -d "$ROOT/xcodegen"
+                    real="$(find "$ROOT/xcodegen" -type f -path '*/bin/xcodegen' | head -n 1)"
+                    if [ -n "$real" ]; then chmod +x "$real"; printf '#!/bin/sh\nexec "%s" "$@"\n' "$real" > "$ROOT/bin/xcodegen"; chmod +x "$ROOT/bin/xcodegen"; fi
+                  else echo "xcodegen.zip does not match the SHA-256 the settings name"; fi
+                  rm -f "$ROOT/xcodegen/xcodegen.zip"
+                fi
+                have="$("$ROOT/bin/xcodegen" --version 2>/dev/null | sed 's/^Version: //')"
               fi
-              xcodegen="$("$ROOT/bin/xcodegen" --version 2>/dev/null)"
-              if [ -n "$xcodegen" ]; then echo "s3l-step xcodegen 1 $xcodegen in $ROOT/xcodegen"; else echo "s3l-step xcodegen 0 xcodegen did not install under $ROOT/xcodegen; the log says why"; fi
+              if [ "$have" = "$XCODEGEN" ]; then echo "s3l-step xcodegen 1 $have in $ROOT/xcodegen"; else echo "s3l-step xcodegen 0 xcodegen $XCODEGEN did not install under $ROOT/xcodegen; the log says why"; fi
             fi
             docker="$(docker version --format '{{.Server.Version}}' 2>/dev/null)"
             if [ -n "$docker" ]; then echo "s3l-step docker 1 Docker $docker"; else echo "s3l-step docker 0 {{{Messages.InstallDocker}}}"; fi
@@ -429,9 +438,6 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
 
     /// <summary>The label an image of this server carries.</summary>
     public const string ImageLabel = "snail.image=buildbridge";
-
-    /// <summary>Where XcodeGen's latest release is fetched from, to live under the root: Homebrew would want sudo, which no script over ssh can give.</summary>
-    public const string XcodeGenUrl = "https://github.com/yonaskolb/XcodeGen/releases/latest/download/xcodegen.zip";
 
     /// <summary>The label carrying the hash of the Dockerfile an image was built from.</summary>
     public const string DockerfileLabel = "snail.dockerfile";

@@ -15,7 +15,7 @@ public sealed class DeliveriesTests
         var copies = new FakeCopies();
         var hosts = new Hosts(Options.Create(new BuildOptions { Hosts = [new HostSetting { Name = Mini.Name, Address = Mini.Address }] }), builder);
 
-        return (new Deliveries(hosts, copies, builder), builder, copies);
+        return (new Deliveries(hosts, copies, builder, new WorkspaceTurns()), builder, copies);
     }
 
     [Fact]

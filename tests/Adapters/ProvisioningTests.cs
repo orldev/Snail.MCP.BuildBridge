@@ -66,7 +66,8 @@ public sealed class ProvisioningTests
         Assert.Contains("--label snail.dockerfile=", script, StringComparison.Ordinal);
         Assert.Contains("s3l-step xcodegen", script, StringComparison.Ordinal);
         Assert.Contains("s3l-step rosetta", script, StringComparison.Ordinal);
-        Assert.Contains(SshBuilder.XcodeGenUrl, script, StringComparison.Ordinal);
+        Assert.Contains("releases/download/2.46.0/xcodegen.zip", script, StringComparison.Ordinal);
+        Assert.Contains(BuilderManifest.DefaultXcodeGenSha256, script, StringComparison.Ordinal);
         Assert.Contains("'s3l-build-dotnet:10.0.302'", script, StringComparison.Ordinal);
         Assert.Contains("FROM mcr.microsoft.com/dotnet/sdk:${SDK}", script, StringComparison.Ordinal);
         Assert.Contains("""<add key="LocalPackages" value="/feeds/LocalPackages" />""", script, StringComparison.Ordinal);

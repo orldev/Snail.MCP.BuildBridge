@@ -36,6 +36,47 @@ public sealed class GitCopies(IPrograms programs) : ICopies
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// The list of what git ignores names only what exists here; a folder the host makes for itself in an ignored
+    /// path absent here is not in it, and a one-way session would delete it. The patterns themselves cover that: a
+    /// gitignore pattern without a slash matches at any depth under its file's folder, one with a slash is anchored
+    /// there, a trailing slash means a folder, a leading ! negates — and Mutagen's syntax says the same with ** and /.
+    /// </remarks>
+    public async Task<IReadOnlyList<string>> IgnorePatternsAsync(LocalCopy copy, CancellationToken cancellationToken)
+    {
+        var run = await programs.RunAsync("git", ["-C", copy.Path, "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", ".gitignore", "*/.gitignore"], null, Patience, cancellationToken);
+        if (!run.IsSuccess)
+            return [];
+
+        var patterns = new List<string>();
+        foreach (var file in run.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries))
+        {
+            string folder = Path.GetDirectoryName(file)?.Replace('\\', '/') ?? string.Empty;
+            var lines = await File.ReadAllLinesAsync(Path.Combine(copy.Path, file), cancellationToken);
+            patterns.AddRange(lines.Select(line => Translated(folder, line)).OfType<string>());
+        }
+
+        return patterns;
+    }
+
+    /// <summary>A gitignore line as a Mutagen pattern anchored at <paramref name="folder"/>, or null for a blank or a comment.</summary>
+    internal static string? Translated(string folder, string line)
+    {
+        string pattern = line.TrimEnd();
+        if (pattern.Length == 0 || pattern.StartsWith('#'))
+            return null;
+
+        bool isNegated = pattern.StartsWith('!');
+        string body = isNegated ? pattern[1..] : pattern;
+        bool isAnchored = body.TrimEnd('/').Contains('/');
+        string relative = body.TrimStart('/');
+        string under = folder.Length == 0 ? string.Empty : $"{folder}/";
+        string anchored = isAnchored ? $"/{under}{relative}" : $"/{under}**/{relative}";
+
+        return isNegated ? $"!{anchored}" : anchored;
+    }
+
+    /// <inheritdoc/>
     public async Task<IReadOnlyList<string>> IgnoredAsync(LocalCopy copy, CancellationToken cancellationToken)
     {
         var run = await programs.RunAsync("git", ["-C", copy.Path, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"], null, Patience, cancellationToken);

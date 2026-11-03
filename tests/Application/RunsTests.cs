@@ -28,7 +28,7 @@ public sealed class RunsTests
 
         var logs = new Logs(TimeProvider.System);
 
-        return (new Runs(hosts, new FakeCopies(), builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), options), builder);
+        return (new Runs(hosts, new FakeCopies(), builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), options), builder);
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public sealed class RunsTests
         var copies = new FakeCopies { Copy = new LocalCopy(copy, "Sample", "main", null, false) };
         var logs = new Logs(TimeProvider.System);
         var options = Options.Create(new BuildOptions { Hosts = [new HostSetting { Name = Mini.Name, Address = Mini.Address }] });
-        runs = new Runs(new Hosts(options, builder), copies, builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), options);
+        runs = new Runs(new Hosts(options, builder), copies, builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), options);
 
         var answer = await runs.RunAsync(copy, BuildKind.Xcode, ["build", "-project", "apple/App.xcodeproj", "-scheme", "App"], null, new Steps(), CancellationToken.None);
 
@@ -148,7 +148,7 @@ public sealed class RunsTests
         var copies = new FakeCopies { Copy = new LocalCopy(copy, "Sample", "main", null, false) };
         var logs = new Logs(TimeProvider.System);
         var options = Options.Create(new BuildOptions { Hosts = [new HostSetting { Name = Mini.Name, Address = Mini.Address }] });
-        runs = new Runs(new Hosts(options, builder), copies, builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), options);
+        runs = new Runs(new Hosts(options, builder), copies, builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), options);
 
         var answer = await runs.RunAsync(copy, BuildKind.Script, ["tools/pack.sh", "Debug"], null, new Steps(), CancellationToken.None);
 
@@ -169,6 +169,17 @@ public sealed class RunsTests
         Assert.NotNull(answer.Error);
         Assert.Empty(builder.Executed);
         Assert.Empty(builder.Delivered);
+    }
+
+    [Fact]
+    public void SpecFolderOf_AProjectOutsideTheCopy_GeneratesNothing()
+    {
+        string copy = TestFolder.Create();
+        var outside = new LocalCopy(copy, "Sample", "main", null, false);
+        File.WriteAllText(Path.Combine(TestFolder.Create(), "project.yml"), "name: Elsewhere\n");
+
+        Assert.Null(Runs.SpecFolderOf(outside, ["build", "-project", "../Elsewhere/App.xcodeproj"]));
+        Assert.Null(Runs.SpecFolderOf(outside, ["build", "-project", "/tmp/App.xcodeproj"]));
     }
 
     [Fact]

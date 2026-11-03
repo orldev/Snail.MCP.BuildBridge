@@ -68,4 +68,35 @@ public sealed class GitCopiesTests
         Assert.Contains("secrets/", ignored);
         Assert.DoesNotContain("notes.txt", ignored);
     }
+
+    [Theory]
+    [InlineData("", "bin/", "/**/bin/")]
+    [InlineData("", "/artifacts", "/artifacts")]
+    [InlineData("apple", "Anonym.xcodeproj/", "/apple/**/Anonym.xcodeproj/")]
+    [InlineData("apple", "Packages/AnonymKit/Frameworks/", "/apple/Packages/AnonymKit/Frameworks/")]
+    [InlineData("", "!keep.txt", "!/**/keep.txt")]
+    [InlineData("", "*.log", "/**/*.log")]
+    public void Translated_AGitignoreLine_IsAMutagenPatternAnchoredAtItsFolder(string folder, string line, string expected) =>
+        Assert.Equal(expected, GitCopies.Translated(folder, line));
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("# a comment")]
+    public void Translated_ABlankOrAComment_IsNothing(string line) => Assert.Null(GitCopies.Translated("", line));
+
+    [Fact]
+    public async Task IgnorePatternsAsync_ACopyWithANestedGitignore_AnchorsEachAtItsFolder()
+    {
+        string repository = Repositories.Create();
+        Directory.CreateDirectory(Path.Combine(repository, "apple"));
+        await File.WriteAllTextAsync(Path.Combine(repository, "apple", ".gitignore"), "Generated.xcodeproj/\n", CancellationToken.None);
+        var copy = (await Copies.ReadAsync(repository, CancellationToken.None)).Value!;
+
+        var patterns = await Copies.IgnorePatternsAsync(copy, CancellationToken.None);
+
+        Assert.Contains("/**/bin/", patterns);
+        Assert.Contains("/**/secrets/", patterns);
+        Assert.Contains("/apple/**/Generated.xcodeproj/", patterns);
+    }
 }

@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Microsoft.Extensions.Options;
 using Snail.MCP.BuildBridge.Application.Ports;
 using Snail.MCP.BuildBridge.Configuration;
@@ -8,14 +7,9 @@ using Snail.Sdk.Mcp.Hosting.Jobs;
 namespace Snail.MCP.BuildBridge.Application;
 
 /// <summary>A build of a working copy on a host: the copy delivered, the feeds mirrored, the command run in the workspace, the log read for what the tests said.</summary>
-/// <remarks>
-/// One workspace takes one run at a time: two sessions on one branch would otherwise write into one <c>obj</c>, and a
-/// delivery under a running build would pull files from under it. A run that finds the workspace busy waits its turn,
-/// and says so in its progress.
-/// </remarks>
-public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs logs, Sweeps sweeps, IOptions<BuildOptions> options)
+/// <remarks>One workspace takes one run at a time, through <see cref="WorkspaceTurns"/>: a run that finds the workspace busy waits its turn, and says so in its progress.</remarks>
+public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs logs, Sweeps sweeps, WorkspaceTurns turns, IOptions<BuildOptions> options)
 {
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _workspaces = new(StringComparer.Ordinal);
 
     /// <summary>Runs <paramref name="kind"/>'s program with <paramref name="arguments"/> in the workspace of the copy <paramref name="path"/> lies in, on the host named or the first.</summary>
     public async Task<Answer<BuildReport>> RunAsync(string path, BuildKind kind, IReadOnlyList<string> arguments, string? host, IProgress<JobProgress> progress, CancellationToken cancellationToken)
@@ -31,14 +25,7 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
         if (ready.Value is not { } state)
             return Answer.Failed<BuildReport>(ready.Error!, ready.Hint);
 
-        var turn = _workspaces.GetOrAdd($"{state.Host.Name}/{found.Workspace.Folder}", _ => new SemaphoreSlim(1, 1));
-        if (!await turn.WaitAsync(0, cancellationToken))
-        {
-            progress.Report(new JobProgress(0, 1, $"waiting for {found.Workspace.Folder} on {state.Host.Name}, where another run is going"));
-            await turn.WaitAsync(cancellationToken);
-        }
-
-        try
+        using (await turns.TakeAsync(state.Host, found.Workspace, () => progress.Report(new JobProgress(0, 1, $"waiting for {found.Workspace.Folder} on {state.Host.Name}, where another run is going")), cancellationToken))
         {
             var swept = await sweeps.BeforeRunAsync(state, cancellationToken);
             if (swept.Count > 0)
@@ -51,10 +38,6 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
             var after = await sweeps.AfterRunAsync(state.Host, found.Repository, cancellationToken);
 
             return Answer.Ok(report with { Swept = [.. swept, .. after] });
-        }
-        finally
-        {
-            turn.Release();
         }
     }
 
@@ -150,6 +133,8 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
     public static string? SpecFolderOf(LocalCopy copy, IReadOnlyList<string> arguments)
     {
         string folder = XcodeCommand.ProjectFolderOf(arguments);
+        if (!ScriptCommand.IsInside(folder))
+            return null;
 
         return File.Exists(Path.Combine(copy.Path, folder, XcodeCommand.Spec)) ? folder : null;
     }

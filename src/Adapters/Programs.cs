@@ -27,10 +27,7 @@ public sealed class Programs : IPrograms
 
         try
         {
-            if (input is not null)
-                await process.StandardInput.WriteAsync(input.AsMemory(), deadline.Token);
-            process.StandardInput.Close();
-
+            await FeedAsync(process, input, deadline.Token);
             await process.WaitForExitAsync(deadline.Token);
 
             return new ProgramRun(process.ExitCode, await output, await error);
@@ -60,6 +57,8 @@ public sealed class Programs : IPrograms
         if (!TryStart(process))
             return ProgramRun.Missing(program);
 
+        process.StandardInput.Close();
+
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(timeout);
 
@@ -81,6 +80,22 @@ public sealed class Programs : IPrograms
         finally
         {
             Stop(process);
+        }
+    }
+
+    /// <summary>Writes the input to the program and closes its input; a program that ended before reading it all has made its answer, and the broken pipe is no failure of ours.</summary>
+    /// <remarks>The close flushes what the writer still holds, so it can meet the broken pipe as well as the write; measured with 4 MB into /usr/bin/true (2026-11-03).</remarks>
+    private static async Task FeedAsync(Process process, string? input, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (input is not null)
+                await process.StandardInput.WriteAsync(input.AsMemory(), cancellationToken);
+            process.StandardInput.Close();
+        }
+        catch (IOException)
+        {
+            return;
         }
     }
 

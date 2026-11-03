@@ -16,7 +16,8 @@ public static class BuildRegistration
         /// <summary>Everything a tool reaches a host through, with the settings read from the settings file and the <c>SNAIL_MCP_BUILDBRIDGE_</c> variables only.</summary>
         public IServiceCollection AddBuilders()
         {
-            services.AddOptions<BuildOptions>().Bind(BuildSettings.Read()).Validate(options => options.HasKnownSync, "Sync must be rsync or mutagen.").ValidateOnStart();
+            services.AddOptions<BuildOptions>().Bind(BuildSettings.Read()).ValidateOnStart();
+            services.AddSingleton<IValidateOptions<BuildOptions>, BuildOptionsValidation>();
             services.AddSingleton(TimeProvider.System);
             services.AddSingleton<IPrograms, Programs>();
             services.AddSingleton<ICopies, GitCopies>();
@@ -28,6 +29,7 @@ public static class BuildRegistration
                 : provider.GetRequiredService<RsyncCourier>());
             services.AddSingleton<IBuilder, SshBuilder>();
             services.AddSingleton<Hosts>();
+            services.AddSingleton<WorkspaceTurns>();
             services.AddSingleton<Deliveries>();
             services.AddSingleton<Logs>();
             services.AddSingleton<Provisioning>();

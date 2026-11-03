@@ -17,7 +17,9 @@ public sealed class SshBuilderTests
     {
         var options = Options.Create(new BuildOptions { RunSeconds = 10, TransferSeconds = 30 });
 
-        return new SshBuilder(Programs, Copies, new RemoteShell(options), options, TimeProvider.System);
+        var shell = new RemoteShell(options);
+
+        return new SshBuilder(Programs, new RsyncCourier(Programs, Copies, shell, options, TimeProvider.System), shell, options, TimeProvider.System);
     }
 
     private static Host LocalHost() => new("here", "localhost", TestFolder.Create());
@@ -32,6 +34,7 @@ public sealed class SshBuilderTests
         Assert.True(state.IsReachable, state.Note);
         Assert.True(state.Has(Capability.Dotnet));
         Assert.True(state.FreeGigabytes > 0);
+        Assert.Equal(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), state.Home);
     }
 
     [Fact]

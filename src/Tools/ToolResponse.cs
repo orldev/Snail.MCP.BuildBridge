@@ -60,6 +60,7 @@ public static class ToolResponse
         ["branch"] = delivery.Key.Branch,
         ["workspace"] = delivery.Key.Folder,
         ["dryRun"] = delivery.IsDryRun,
+        ["means"] = delivery.Means,
         ["files"] = new JsonArray([.. delivery.Files.Select(file => JsonValue.Create(file))]),
         ["bytes"] = delivery.Bytes,
         ["seconds"] = Math.Round(delivery.Took.TotalSeconds, 1)

@@ -33,8 +33,10 @@ public sealed class DiagnosticsTools(Hosts hosts, IPrograms programs, IOptions<B
             {
                 ["ssh"] = await VersionAsync(settings.Ssh, ["-V"], cancellationToken),
                 ["rsync"] = await VersionAsync(settings.Rsync, ["--version"], cancellationToken),
-                ["git"] = await VersionAsync("git", ["--version"], cancellationToken)
+                ["git"] = await VersionAsync("git", ["--version"], cancellationToken),
+                ["mutagen"] = await VersionAsync(settings.Mutagen, ["version"], cancellationToken)
             },
+            ["sync"] = settings.Sync,
             ["dataDirectory"] = ServerFolders.DataDirectory(BuildSettings.Name),
             ["settingsFile"] = ServerSettings.FileOf(BuildSettings.Name)
         };

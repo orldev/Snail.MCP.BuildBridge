@@ -13,7 +13,9 @@ public sealed class ProvisioningTests
         var programs = new Programs();
         var options = Options.Create(new BuildOptions());
 
-        return new SshBuilder(programs, new GitCopies(programs), new RemoteShell(options), options, TimeProvider.System);
+        var shell = new RemoteShell(options);
+
+        return new SshBuilder(programs, new RsyncCourier(programs, new GitCopies(programs), shell, options, TimeProvider.System), shell, options, TimeProvider.System);
     }
 
     [Fact]
@@ -21,14 +23,14 @@ public sealed class ProvisioningTests
     {
         var host = new Host("here", "localhost", TestFolder.Create());
         string log = Path.Combine(TestFolder.Create(), "provision.log");
-        var manifest = new BuilderManifest(string.Empty, [], []);
+        var manifest = new BuilderManifest(string.Empty, [], [], [], false);
 
         var answer = await Builder().ProvisionAsync(host, manifest, log, TimeSpan.FromSeconds(60), CancellationToken.None);
 
         var provisioned = Assert.IsType<Provisioned>(answer.Value);
         Assert.True(Directory.Exists(Path.Combine(host.Root, "workspaces")));
         Assert.True(Directory.Exists(Path.Combine(host.Root, "feeds")));
-        Assert.Equal(["folders", "dotnet", "xcode", "docker", "sleep"], provisioned.Steps.Select(step => step.Name));
+        Assert.Equal(["folders", "dotnet", "xcode", "docker", "sleep", "rosetta"], provisioned.Steps.Select(step => step.Name));
         Assert.True(provisioned.Steps[0].IsDone);
         Assert.True(provisioned.Steps[1].IsDone, provisioned.Steps[1].Note);
         Assert.Equal(log, provisioned.Log);
@@ -55,11 +57,55 @@ public sealed class ProvisioningTests
     [Fact]
     public void ProvisionScript_ManifestWithSdkAndWorkloads_NamesThemForTheHost()
     {
-        var script = SshBuilder.ProvisionScript(new Host("mini", "mini"), new BuilderManifest("10.0.302", ["maui-ios", "wasm-tools"], ["LocalPackages"]));
+        var script = SshBuilder.ProvisionScript(new Host("mini", "mini"), new BuilderManifest("10.0.302", ["maui-ios", "wasm-tools"], ["LocalPackages"], ["dotnet"]));
 
         Assert.Contains("SDK='10.0.302'", script, StringComparison.Ordinal);
         Assert.Contains("WORKLOADS='maui-ios wasm-tools'", script, StringComparison.Ordinal);
         Assert.Contains("FEEDS='LocalPackages'", script, StringComparison.Ordinal);
         Assert.Contains("ROOT=\"$HOME/.s3l-build\"", script, StringComparison.Ordinal);
+        Assert.Contains("--label snail.dockerfile=", script, StringComparison.Ordinal);
+        Assert.Contains("s3l-step xcodegen", script, StringComparison.Ordinal);
+        Assert.Contains("s3l-step rosetta", script, StringComparison.Ordinal);
+        Assert.Contains(SshBuilder.XcodeGenUrl, script, StringComparison.Ordinal);
+        Assert.Contains("'s3l-build-dotnet:10.0.302'", script, StringComparison.Ordinal);
+        Assert.Contains("FROM mcr.microsoft.com/dotnet/sdk:${SDK}", script, StringComparison.Ordinal);
+        Assert.Contains("""<add key="LocalPackages" value="/feeds/LocalPackages" />""", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ImageScript_Android_BuildsForAmd64UnderItsOwnLabel()
+    {
+        string script = SshBuilder.ImageScript(BuildImage.Android, "10.0.302");
+
+        Assert.Contains("--platform linux/amd64", script, StringComparison.Ordinal);
+        Assert.Contains("--label snail.image=buildbridge", script, StringComparison.Ordinal);
+        Assert.Contains("maui-android", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ImageScript_ADockerfileChanged_IsBuiltAgainUnderAnotherHash()
+    {
+        string one = SshBuilder.DockerfileHash("FROM a\n");
+        string other = SshBuilder.DockerfileHash("FROM a\nRUN b\n");
+
+        Assert.NotEqual(one, other);
+        Assert.Equal(one, SshBuilder.DockerfileHash("FROM a"));
+    }
+
+    [Fact]
+    public void ImageScript_UnknownImage_ReportsAStepNotDone()
+    {
+        string script = SshBuilder.ImageScript("rust", "10.0.302");
+
+        Assert.Contains("s3l-step image-rust 0", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Steps_ImageLines_AreReadBack()
+    {
+        var steps = SshBuilder.Steps("s3l-step image-dotnet 1 s3l-build-dotnet:10.0.302 built\ns3l-step image-android 0 docker is not there to build s3l-build-android:10.0.302\n");
+
+        Assert.Equal(new ProvisionStep("image-dotnet", true, "s3l-build-dotnet:10.0.302 built"), steps[0]);
+        Assert.False(steps[1].IsDone);
     }
 }

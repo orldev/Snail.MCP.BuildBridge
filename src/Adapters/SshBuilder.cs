@@ -11,9 +11,8 @@ namespace Snail.MCP.BuildBridge.Adapters;
 /// <summary>A host worked over ssh and rsync, with nothing of this server's installed there: a probe, a delivery, a run, a collection and a removal are each a script or an rsync.</summary>
 /// <remarks>
 /// <para>
-/// A delivery mirrors the copy with rsync: what git ignores and what a build makes again are excluded, and an excluded
-/// folder already on the host — <c>bin</c>, <c>obj</c> — is left alone, so a build there stays incremental. A tracked
-/// file deleted here is deleted there. The marker written beside the copy is what proves a workspace this server's.
+/// A delivery is the courier's — rsync once per run, or a Mutagen session — and the marker written beside the copy
+/// afterwards is what proves a workspace this server's.
 /// </para>
 /// <para>
 /// A run's command is started in the background of its script and its id written beside the workspace, so a run
@@ -21,7 +20,7 @@ namespace Snail.MCP.BuildBridge.Adapters;
 /// client alone would leave the build running.
 /// </para>
 /// </remarks>
-public sealed class SshBuilder(IPrograms programs, ICopies copies, RemoteShell shell, IOptions<BuildOptions> options, TimeProvider clock) : IBuilder
+public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell shell, IOptions<BuildOptions> options, TimeProvider clock) : IBuilder
 {
     private const string PidFileName = ".s3l-build.pid";
 
@@ -33,6 +32,7 @@ public sealed class SshBuilder(IPrograms programs, ICopies copies, RemoteShell s
             printf 'xcode=%s\n' "$(xcodebuild -version 2>/dev/null | head -n 1 | sed 's/^Xcode //')"
             printf 'docker=%s\n' "$(docker version --format '{{.Server.Version}}' 2>/dev/null)"
             printf 'free=%s\n' "$(df -g "$HOME" | tail -n 1 | awk '{print $4}')"
+            printf 'home=%s\n' "$HOME"
             """;
 
         var run = await RunScriptAsync(host, script, cancellationToken);
@@ -52,7 +52,7 @@ public sealed class SshBuilder(IPrograms programs, ICopies copies, RemoteShell s
         };
         double? free = double.TryParse(answers.GetValueOrDefault("free"), NumberStyles.Float, CultureInfo.InvariantCulture, out double gigabytes) ? gigabytes : null;
 
-        return new HostState(host, true, toolchains, free, null);
+        return new HostState(host, true, toolchains, free, null, Version(answers, "home"));
     }
 
     /// <inheritdoc/>
@@ -82,26 +82,14 @@ public sealed class SshBuilder(IPrograms programs, ICopies copies, RemoteShell s
     /// <inheritdoc/>
     public async Task<Answer<Delivery>> DeliverAsync(Host host, LocalCopy copy, bool isDryRun, CancellationToken cancellationToken)
     {
-        var key = copy.Workspace;
-        var made = await RunScriptAsync(host, $"mkdir -p {RemoteShell.Under(host, key.Folder)}", cancellationToken);
-        if (!made.IsSuccess)
-            return Answer.Failed<Delivery>(Messages.DeliveryFailed(host.Name, Reason(made)));
-
-        var ignored = await copies.IgnoredAsync(copy, cancellationToken);
-        string excludes = Excludes(copy, ignored);
-        var started = clock.GetTimestamp();
-
-        var arguments = RsyncArguments(host, isDryRun, true, $"{copy.Path}/", $"{RemoteShell.Rsync(host, key.Folder)}/");
-        var run = await programs.RunAsync(options.Value.Rsync, arguments, null, TimeSpan.FromSeconds(options.Value.TransferSeconds), cancellationToken, excludes);
-        if (run.IsMissing)
-            return Answer.Failed<Delivery>(Messages.ProgramMissing(options.Value.Rsync));
-        if (!run.IsSuccess)
-            return Answer.Failed<Delivery>(Messages.DeliveryFailed(host.Name, Reason(run)));
+        var delivered = await courier.DeliverAsync(host, copy, isDryRun, cancellationToken);
+        if (delivered.Value is not { } delivery)
+            return delivered;
 
         if (!isDryRun)
-            await MarkAsync(host, new WorkspaceMarker(key, $"{Environment.MachineName}:{copy.Path}", copy.Commit, clock.GetUtcNow(), null), cancellationToken);
+            await MarkAsync(host, new WorkspaceMarker(copy.Workspace, $"{Environment.MachineName}:{copy.Path}", copy.Commit, clock.GetUtcNow(), null), cancellationToken);
 
-        return Answer.Ok(new Delivery(key, Changed(run.Output), TransferredBytes(run.Output), clock.GetElapsedTime(started), isDryRun));
+        return Answer.Ok(delivery);
     }
 
     /// <inheritdoc/>
@@ -110,17 +98,17 @@ public sealed class SshBuilder(IPrograms programs, ICopies copies, RemoteShell s
         var key = new WorkspaceKey(relative, string.Empty);
         var made = await RunScriptAsync(host, $"mkdir -p {RemoteShell.Under(host, relative)}", cancellationToken);
         if (!made.IsSuccess)
-            return Answer.Failed<Delivery>(Messages.DeliveryFailed(host.Name, Reason(made)));
+            return Answer.Failed<Delivery>(Messages.DeliveryFailed(host.Name, Rsync.Reason(made)));
 
         var started = clock.GetTimestamp();
-        var arguments = RsyncArguments(host, false, false, $"{source.TrimEnd('/')}/", $"{RemoteShell.Rsync(host, relative)}/");
+        var arguments = Rsync.Arguments(options.Value, host, false, false, $"{source.TrimEnd('/')}/", $"{RemoteShell.Rsync(host, relative)}/");
         var run = await programs.RunAsync(options.Value.Rsync, arguments, null, TimeSpan.FromSeconds(options.Value.TransferSeconds), cancellationToken);
         if (run.IsMissing)
             return Answer.Failed<Delivery>(Messages.ProgramMissing(options.Value.Rsync));
         if (!run.IsSuccess)
-            return Answer.Failed<Delivery>(Messages.DeliveryFailed(host.Name, Reason(run)));
+            return Answer.Failed<Delivery>(Messages.DeliveryFailed(host.Name, Rsync.Reason(run)));
 
-        return Answer.Ok(new Delivery(key, Changed(run.Output), TransferredBytes(run.Output), clock.GetElapsedTime(started), false));
+        return Answer.Ok(new Delivery(key, Rsync.Changed(run.Output), Rsync.TransferredBytes(run.Output), clock.GetElapsedTime(started), false));
     }
 
     /// <inheritdoc/>
@@ -169,7 +157,7 @@ public sealed class SshBuilder(IPrograms programs, ICopies copies, RemoteShell s
     {
         var run = await RunScriptAsync(host, $"xcrun simctl clone {RemoteShell.Quoted(device)} {RemoteShell.Quoted(clone)}", cancellationToken, TimeSpan.FromSeconds(options.Value.TransferSeconds));
         if (!run.IsSuccess)
-            return Answer.Failed<string>(Messages.SimulatorFailed(device, Reason(run)), Messages.SimulatorHint);
+            return Answer.Failed<string>(Messages.SimulatorFailed(device, Rsync.Reason(run)), Messages.SimulatorHint);
 
         string udid = run.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? string.Empty;
 
@@ -197,14 +185,14 @@ public sealed class SshBuilder(IPrograms programs, ICopies copies, RemoteShell s
             string into = Path.Combine(folder, Path.GetDirectoryName(path) ?? string.Empty);
             Directory.CreateDirectory(into);
 
-            var arguments = RsyncArguments(host, false, false, RemoteShell.Rsync(host, $"{key.Folder}/{path}"), $"{into}/");
+            var arguments = Rsync.Arguments(options.Value, host, false, false, RemoteShell.Rsync(host, $"{key.Folder}/{path}"), $"{into}/");
             var run = await programs.RunAsync(options.Value.Rsync, arguments, null, TimeSpan.FromSeconds(options.Value.TransferSeconds), cancellationToken);
             if (run.IsMissing)
                 return Answer.Failed<Collected>(Messages.ProgramMissing(options.Value.Rsync));
             if (!run.IsSuccess)
-                return Answer.Failed<Collected>(Messages.CollectionFailed(host.Name, Reason(run)));
+                return Answer.Failed<Collected>(Messages.CollectionFailed(host.Name, Rsync.Reason(run)));
 
-            bytes += TransferredBytes(run.Output);
+            bytes += Rsync.TransferredBytes(run.Output);
         }
 
         var files = Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
@@ -220,7 +208,7 @@ public sealed class SshBuilder(IPrograms programs, ICopies copies, RemoteShell s
     {
         var run = await RunScriptAsync(host, SurveyScript(host), cancellationToken, TimeSpan.FromSeconds(options.Value.TransferSeconds));
         if (!run.IsSuccess)
-            return Answer.Failed<Survey>(Messages.SurveyFailed(host.Name, Reason(run)));
+            return Answer.Failed<Survey>(Messages.SurveyFailed(host.Name, Rsync.Reason(run)));
 
         return Answer.Ok(SurveyOf(host, run.Output));
     }
@@ -238,7 +226,8 @@ public sealed class SshBuilder(IPrograms programs, ICopies copies, RemoteShell s
         string script = item.Kind switch
         {
             SweepKind.Derived when item.Name == WorkspaceKey.Safe(item.Name) => $"rm -rf {RemoteShell.Under(host, $"derived/{item.Name}")} && echo removed",
-            SweepKind.Images => $"docker image prune -a --force --filter label={DockerCommand.Label} {(item.Name == "all" ? string.Empty : $"--filter until={item.Name}")} >/dev/null && echo removed",
+            SweepKind.Images when item.Name == "all" => $"docker image prune -a --force --filter label={DockerCommand.Label} >/dev/null && (docker image ls --filter label={ImageLabel} -q | xargs docker image rm -f >/dev/null 2>&1; echo removed)",
+            SweepKind.Images => $"docker image prune -a --force --filter label={DockerCommand.Label} --filter until={item.Name} >/dev/null && echo removed",
             SweepKind.BuildCache => $"docker builder prune -a --force {(item.Name == "all" ? string.Empty : $"--filter until={item.Name}")} >/dev/null && echo removed",
             SweepKind.Packages => $"rm -rf {RemoteShell.Under(host, "nuget")} && echo removed",
             _ => string.Empty
@@ -248,7 +237,7 @@ public sealed class SshBuilder(IPrograms programs, ICopies copies, RemoteShell s
 
         var run = await RunScriptAsync(host, script, cancellationToken, TimeSpan.FromMinutes(30));
         if (!run.IsSuccess)
-            return Answer.Failed<bool>(Reason(run));
+            return Answer.Failed<bool>(Rsync.Reason(run));
 
         return Answer.Ok(run.Output.Contains("removed", StringComparison.Ordinal));
     }
@@ -332,12 +321,14 @@ public sealed class SshBuilder(IPrograms programs, ICopies copies, RemoteShell s
     /// <inheritdoc/>
     public async Task<Answer<bool>> RemoveAsync(Host host, WorkspaceKey key, CancellationToken cancellationToken)
     {
+        await courier.ForgetAsync(host, key, cancellationToken);
+
         string workspace = RemoteShell.Under(host, key.Folder);
         string marker = RemoteShell.Under(host, $"{key.Folder}/{WorkspaceMarker.FileName}");
         var run = await RunScriptAsync(host, $"if [ -f {marker} ]; then rm -rf {workspace} && echo removed; else echo kept; fi", cancellationToken);
 
         if (!run.IsSuccess)
-            return Answer.Failed<bool>(Messages.HostDown(host.Name, host.Address, Reason(run)));
+            return Answer.Failed<bool>(Messages.HostDown(host.Name, host.Address, Rsync.Reason(run)));
 
         return Answer.Ok(run.Output.Contains("removed", StringComparison.Ordinal));
     }
@@ -350,6 +341,7 @@ public sealed class SshBuilder(IPrograms programs, ICopies copies, RemoteShell s
         string sdk = RemoteShell.Quoted(manifest.SdkVersion);
         string workloads = RemoteShell.Quoted(string.Join(' ', manifest.Workloads));
         string feeds = RemoteShell.Quoted(string.Join(' ', manifest.Feeds));
+        string images = string.Concat(manifest.Images.Select(image => ImageScript(image, manifest.SdkVersion)));
 
         return $$$"""
             ROOT={{{root}}}
@@ -384,9 +376,84 @@ public sealed class SshBuilder(IPrograms programs, ICopies copies, RemoteShell s
             done
             xcode="$(xcodebuild -version 2>/dev/null | head -n 1)"
             if [ -n "$xcode" ]; then echo "s3l-step xcode 1 $xcode"; else echo "s3l-step xcode 0 {{{Messages.InstallXcode}}}"; fi
+            if [ -n "$xcode" ] && [ {{{(manifest.HasXcodeGen ? 1 : 0)}}} = 1 ]; then
+              if [ ! -x "$ROOT/bin/xcodegen" ]; then
+                mkdir -p "$ROOT/xcodegen" && curl -fsSL {{{XcodeGenUrl}}} -o "$ROOT/xcodegen/xcodegen.zip" && unzip -qo "$ROOT/xcodegen/xcodegen.zip" -d "$ROOT/xcodegen" && rm -f "$ROOT/xcodegen/xcodegen.zip"
+                real="$(find "$ROOT/xcodegen" -type f -path '*/bin/xcodegen' | head -n 1)"
+                if [ -n "$real" ]; then chmod +x "$real"; printf '#!/bin/sh\nexec "%s" "$@"\n' "$real" > "$ROOT/bin/xcodegen"; chmod +x "$ROOT/bin/xcodegen"; fi
+              fi
+              xcodegen="$("$ROOT/bin/xcodegen" --version 2>/dev/null)"
+              if [ -n "$xcodegen" ]; then echo "s3l-step xcodegen 1 $xcodegen in $ROOT/xcodegen"; else echo "s3l-step xcodegen 0 xcodegen did not install under $ROOT/xcodegen; the log says why"; fi
+            fi
             docker="$(docker version --format '{{.Server.Version}}' 2>/dev/null)"
             if [ -n "$docker" ]; then echo "s3l-step docker 1 Docker $docker"; else echo "s3l-step docker 0 {{{Messages.InstallDocker}}}"; fi
             if pmset -g 2>/dev/null | grep -Eq '^ *(SleepDisabled +1|sleep +0)'; then echo "s3l-step sleep 1 the host does not sleep"; else echo "s3l-step sleep 0 {{{Messages.KeepAwake}}}"; fi
+            if [ "$(uname -m)" = arm64 ]; then
+              if arch -x86_64 /usr/bin/true >/dev/null 2>&1; then echo "s3l-step rosetta 1 x64 programs run"; else echo "s3l-step rosetta 0 {{{Messages.InstallRosetta}}}"; fi
+            fi
+            cat > "$ROOT/{{{ContainerCommand.NuGetConfig}}}" <<'S3L_NUGET'
+            {{{ContainerNuGetConfig(manifest.Feeds)}}}
+            S3L_NUGET
+            {{{images}}}
+            """;
+    }
+
+    /// <summary>The lines that build one image: its Dockerfile written under the root, then docker build unless the tag is there already from this very Dockerfile.</summary>
+    /// <remarks>
+    /// An image of this server carries the label <see cref="ImageLabel"/>, not the owner label of what a run makes: a
+    /// sweep of stale images must not take the toolchains with it. It also carries a hash of the Dockerfile it was built
+    /// from, so a changed Dockerfile — a package added — is built again under the same tag, and an unchanged one is not.
+    /// </remarks>
+    internal static string ImageScript(string image, string sdkVersion)
+    {
+        string dockerfile = BuildImages.DockerfileOf(image) ?? string.Empty;
+        string tag = BuildImage.TagOf(image, sdkVersion);
+        string platform = BuildImage.PlatformOf(image) is { } wanted ? $"--platform {wanted} " : string.Empty;
+        string sdk = sdkVersion.Length > 0 ? sdkVersion : "10.0";
+        string hash = DockerfileHash(dockerfile);
+        if (dockerfile.Length == 0)
+            return $"echo \"s3l-step image-{image} 0 this server carries no Dockerfile named {image}\"\n";
+
+        return $$$"""
+            mkdir -p "$ROOT/images/{{{image}}}"
+            cat > "$ROOT/images/{{{image}}}/Dockerfile" <<'S3L_DOCKERFILE'
+            {{{dockerfile.TrimEnd()}}}
+            S3L_DOCKERFILE
+            if [ -z "$docker" ]; then echo "s3l-step image-{{{image}}} 0 docker is not there to build {{{tag}}}"
+            elif [ "$(docker image inspect --format '{{index .Config.Labels "{{{DockerfileLabel}}}"}}' {{{RemoteShell.Quoted(tag)}}} 2>/dev/null)" = "{{{hash}}}" ]; then echo "s3l-step image-{{{image}}} 1 {{{tag}}}"
+            elif docker build {{{platform}}}--label {{{ImageLabel}}} --label {{{DockerfileLabel}}}={{{hash}}} --build-arg SDK={{{RemoteShell.Quoted(sdk)}}} -t {{{RemoteShell.Quoted(tag)}}} "$ROOT/images/{{{image}}}"; then echo "s3l-step image-{{{image}}} 1 {{{tag}}} built"
+            else echo "s3l-step image-{{{image}}} 0 docker build of {{{tag}}} failed; the log says why"; fi
+
+            """;
+    }
+
+    /// <summary>The label an image of this server carries.</summary>
+    public const string ImageLabel = "snail.image=buildbridge";
+
+    /// <summary>Where XcodeGen's latest release is fetched from, to live under the root: Homebrew would want sudo, which no script over ssh can give.</summary>
+    public const string XcodeGenUrl = "https://github.com/yonaskolb/XcodeGen/releases/latest/download/xcodegen.zip";
+
+    /// <summary>The label carrying the hash of the Dockerfile an image was built from.</summary>
+    public const string DockerfileLabel = "snail.dockerfile";
+
+    /// <summary>The hash of a Dockerfile as its image's label carries it: sixteen hex characters of SHA-256, enough to tell one text from another.</summary>
+    internal static string DockerfileHash(string dockerfile) =>
+        Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(dockerfile.TrimEnd())))[..16];
+
+    /// <summary>The NuGet configuration a container reads: nuget.org and every mirrored feed where the run mounts them.</summary>
+    internal static string ContainerNuGetConfig(IReadOnlyList<string> feeds)
+    {
+        var sources = feeds.Select(feed => $"""    <add key="{feed}" value="{ContainerCommand.Feeds}/{feed}" />""");
+
+        return $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+            {string.Join('\n', sources)}
+              </packageSources>
+            </configuration>
             """;
     }
 
@@ -422,35 +489,6 @@ public sealed class SshBuilder(IPrograms programs, ICopies copies, RemoteShell s
         await RunScriptAsync(host, script, CancellationToken.None);
     }
 
-    /// <summary>What a delivery leaves out, one rsync pattern a line: what a build makes again, a worktree's dead .git file, and what git ignores, anchored at the copy's root.</summary>
-    private string Excludes(LocalCopy copy, IReadOnlyList<string> ignored)
-    {
-        var lines = new List<string>(options.Value.Excludes);
-        if (copy.IsWorktree)
-            lines.Add("/.git");
-        lines.AddRange(ignored.Select(entry => $"/{entry}"));
-
-        return string.Join('\n', lines) + '\n';
-    }
-
-    private IReadOnlyList<string> RsyncArguments(Host host, bool isDryRun, bool hasExcludes, string source, string destination)
-    {
-        var arguments = new List<string> { "-a", "--delete", "--itemize-changes", "--stats" };
-        if (isDryRun)
-            arguments.Add("--dry-run");
-        if (hasExcludes)
-            arguments.Add("--exclude-from=-");
-        if (!host.IsLocal)
-            arguments.AddRange(["-e", $"{options.Value.Ssh} -o BatchMode=yes -o ConnectTimeout=10"]);
-
-        arguments.Add(source);
-        arguments.Add(destination);
-
-        return arguments;
-    }
-
-    private static string Reason(ProgramRun run) => run.IsTimedOut ? "it ran past its time" : string.IsNullOrWhiteSpace(run.Error) ? $"exit code {run.ExitCode}" : run.Error.Trim();
-
     private static Dictionary<string, string> Parsed(string output)
     {
         var pairs = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -462,25 +500,4 @@ public sealed class SshBuilder(IPrograms programs, ICopies copies, RemoteShell s
 
     private static string? Version(Dictionary<string, string> answers, string key) =>
         answers.TryGetValue(key, out var version) && version.Length > 0 ? version : null;
-
-    /// <summary>The files an itemized rsync run named: created, changed or deleted.</summary>
-    /// <remarks>An item is its flags, a space and the path; openrsync writes nine flag characters where rsync 3 writes eleven, so the space is looked for rather than counted to.</remarks>
-    private static IReadOnlyList<string> Changed(string output)
-    {
-        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        var deleted = lines.Where(line => line.StartsWith("*deleting", StringComparison.Ordinal)).Select(line => line[9..].Trim());
-        var items = lines.Select(line => (Flags: line.Split(' ', 2)[0], Path: line.Split(' ', 2).ElementAtOrDefault(1)));
-        var written = items.Where(item => item.Path is not null && item.Flags.Length >= 9 && item.Flags[0] is '<' or '>' or 'c' && item.Flags[1] is 'f' or 'L').Select(item => item.Path!);
-
-        return [.. deleted.Concat(written).Where(file => !file.EndsWith('/'))];
-    }
-
-    /// <summary>The bytes rsync's stats say went over the wire.</summary>
-    private static long TransferredBytes(string output)
-    {
-        var line = output.Split('\n').FirstOrDefault(line => line.StartsWith("Total transferred file size:", StringComparison.Ordinal));
-        var number = line?.Split(':', 2)[1].Trim().Split(' ')[0].Replace(",", string.Empty, StringComparison.Ordinal);
-
-        return long.TryParse(number, NumberStyles.Integer, CultureInfo.InvariantCulture, out long bytes) ? bytes : 0;
-    }
 }

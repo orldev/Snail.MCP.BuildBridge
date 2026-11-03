@@ -24,12 +24,14 @@ Takes no parameters.
 ## <code>build_<wbr>provision</code>
 
 Make a host ready to build: create its root with its folders, install the .NET SDK the settings name under the
-root with its workloads, add the mirrored package feeds to its NuGet sources, and look at Xcode, Docker and
-sleep — those a person installs or sets, and the answer says how. Run it on a new host, and again after the
-settings change; what is in place already is left as it is. The work runs as a job: the answer is the job's
-report, with the steps as its result when it ends within the wait, or the running job, whose resource
-job://buildbridge/provision/&lt;id&gt; carries them once it ends. A workload install is minutes; the job may run up
-to 3600 seconds.
+root with its workloads, add the mirrored package feeds to its NuGet sources, build the images the settings
+name for the linux and android kinds when docker is there, put xcodegen under the root when Xcode is there,
+and look at Xcode, Docker, Rosetta and sleep — those a person installs or sets, since each means a licence or
+a password, and the answer says how. Run it on a new host, and again after the settings change;
+what is in place already is left as it is. The work runs as a job: the answer is the job's report, with the
+steps as its result when it ends within the wait, or the running job, whose resource
+job://buildbridge/provision/&lt;id&gt; carries them once it ends. A workload install is minutes and the android
+image longer; the job may run up to 3600 seconds.
 
 *only adds · repeat-safe · may reach outside services.*
 
@@ -70,7 +72,9 @@ without sending it. The workspace is one per repository and branch under the hos
 goes over the wire; what git ignores and what a build makes again — bin, obj, artifacts, TestResults — never
 goes, and a tracked file deleted here is deleted there. Build outputs already on the host are left alone, so a
 build there stays incremental. A linked worktree is delivered without its .git. A delivery may take up to 600
-seconds. build_run delivers by itself before it runs, so call this to check a delivery, not before every run.
+seconds. With Sync set to mutagen in the settings a session keeps the workspace mirrored as the copy changes,
+a delivery only waits for it to catch up and names no files, and dryRun still lists the difference through
+rsync. build_run delivers by itself before it runs, so call this to check a delivery, not before every run.
 
 *only adds · repeat-safe · stays on this machine.*
 
@@ -115,13 +119,21 @@ seconds. build_run delivers by itself before it runs, so call this to check a de
 ## <code>build_<wbr>run</code>
 
 Build, test or publish a working copy on a host and get back how it went. The copy a path lies in is delivered
-first (as build_sync does), then the program of the kind — dotnet, xcode or docker: dotnet, xcodebuild or docker — runs in the
-workspace with the arguments given, such as test -c Release, or build -scheme App -destination
-'platform=iOS Simulator,name=iPhone 17', or compose up -d --build. The answer says whether it succeeded, the
+first (as build_sync does), then the program of the kind — dotnet, xcode, docker, linux, android or script: dotnet, xcodebuild, docker, or dotnet
+inside the host's s3l-build-dotnet or s3l-build-android image — runs in the workspace with the arguments
+given, such as test -c Release, or build -scheme App -destination 'platform=iOS Simulator,name=iPhone 17', or
+compose up -d --build. The linux kind is for a Linux target, Native AOT for Linux or tests on Linux, the
+android kind for an Android build; both mount the workspace, the packages and the feeds into the container,
+and the android image runs under emulation on an Apple Silicon host. The script kind runs a script of the
+repository as it is: the first argument is its path from the workspace's root, such as
+tools/native/build-xcframework.sh, the rest its arguments; it must be executable, as git keeps it, and finds
+the host's dotnet on its path — for what a build needs that no one program says, before another run. The
+answer says whether it succeeded, the
 exit code, what the tests said when there were any, and where the log is on this machine, which build_logs
 reads. Outputs stay on the host, where the next run finds them; build_fetch brings named paths back. An
-xcodebuild run keeps its derived data under the host's root, and a destination that names a simulator by name
-gets a clone of it for the run alone, deleted when the run ends. A docker build or run carries the label
+xcodebuild run keeps its derived data under the host's root, a destination that names a simulator by name
+gets a clone of it for the run alone, deleted when the run ends, and a project with a project.yml beside it is
+generated on the host by xcodegen first, since a generated project is what git ignores. A docker build or run carries the label
 snail.owner, and a compose stand is the project s3l-&lt;repository&gt;-&lt;branch&gt; unless -p names one. The work
 runs as a job: the answer is the job's report, with the build as its result when it ends within the wait, or
 the running job, whose resource job://buildbridge/&lt;kind&gt;/&lt;id&gt; carries it once it ends and whose message names
@@ -132,7 +144,7 @@ the log. A run may take up to 3600 seconds; one workspace takes one run at a tim
 | Parameter | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `path` | `string` | yes | — | A path inside the working copy to build, such as the repository's root. |
-| `kind` | `string` | yes | — | Which program runs: dotnet, xcode or docker. |
+| `kind` | `string` | yes | — | Which program runs: dotnet, xcode, docker, linux, android or script. |
 | `arguments` | `array` | yes | — | The program's arguments, one word each, as they would be typed in the workspace's root: ["test", "-c", "Release"]. |
 | `host` | `string?` | — | `null` | The host to use, by the name build_hosts lists; the first host when not given. |
 | `wait` | `integer` | — | `60` | Seconds to wait for the work before answering with the running job; 60 when not given, 0 answers with the job at once. |
@@ -148,7 +160,7 @@ the log. A run may take up to 3600 seconds; one workspace takes one run at a tim
       "type": "string"
     },
     "kind": {
-      "description": "Which program runs: dotnet, xcode or docker.",
+      "description": "Which program runs: dotnet, xcode, docker, linux, android or script.",
       "type": "string"
     },
     "arguments": {

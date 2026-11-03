@@ -16,7 +16,7 @@
   },
   {
     "name": "build_provision",
-    "description": "Make a host ready to build: create its root with its folders, install the .NET SDK the settings name under the\nroot with its workloads, add the mirrored package feeds to its NuGet sources, and look at Xcode, Docker and\nsleep \u2014 those a person installs or sets, and the answer says how. Run it on a new host, and again after the\nsettings change; what is in place already is left as it is. The work runs as a job: the answer is the job\u0027s\nreport, with the steps as its result when it ends within the wait, or the running job, whose resource\njob://buildbridge/provision/\u003Cid\u003E carries them once it ends. A workload install is minutes; the job may run up\nto 3600 seconds.",
+    "description": "Make a host ready to build: create its root with its folders, install the .NET SDK the settings name under the\nroot with its workloads, add the mirrored package feeds to its NuGet sources, build the images the settings\nname for the linux and android kinds when docker is there, put xcodegen under the root when Xcode is there,\nand look at Xcode, Docker, Rosetta and sleep \u2014 those a person installs or sets, since each means a licence or\na password, and the answer says how. Run it on a new host, and again after the settings change;\nwhat is in place already is left as it is. The work runs as a job: the answer is the job\u0027s report, with the\nsteps as its result when it ends within the wait, or the running job, whose resource\njob://buildbridge/provision/\u003Cid\u003E carries them once it ends. A workload install is minutes and the android\nimage longer; the job may run up to 3600 seconds.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -45,7 +45,7 @@
   },
   {
     "name": "build_sync",
-    "description": "Deliver the working copy a path lies in to a host\u0027s workspace, or with dryRun list what a delivery would send\nwithout sending it. The workspace is one per repository and branch under the host\u0027s root. Only what changed\ngoes over the wire; what git ignores and what a build makes again \u2014 bin, obj, artifacts, TestResults \u2014 never\ngoes, and a tracked file deleted here is deleted there. Build outputs already on the host are left alone, so a\nbuild there stays incremental. A linked worktree is delivered without its .git. A delivery may take up to 600\nseconds. build_run delivers by itself before it runs, so call this to check a delivery, not before every run.",
+    "description": "Deliver the working copy a path lies in to a host\u0027s workspace, or with dryRun list what a delivery would send\nwithout sending it. The workspace is one per repository and branch under the host\u0027s root. Only what changed\ngoes over the wire; what git ignores and what a build makes again \u2014 bin, obj, artifacts, TestResults \u2014 never\ngoes, and a tracked file deleted here is deleted there. Build outputs already on the host are left alone, so a\nbuild there stays incremental. A linked worktree is delivered without its .git. A delivery may take up to 600\nseconds. With Sync set to mutagen in the settings a session keeps the workspace mirrored as the copy changes,\na delivery only waits for it to catch up and names no files, and dryRun still lists the difference through\nrsync. build_run delivers by itself before it runs, so call this to check a delivery, not before every run.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -81,7 +81,7 @@
   },
   {
     "name": "build_run",
-    "description": "Build, test or publish a working copy on a host and get back how it went. The copy a path lies in is delivered\nfirst (as build_sync does), then the program of the kind \u2014 dotnet, xcode or docker: dotnet, xcodebuild or docker \u2014 runs in the\nworkspace with the arguments given, such as test -c Release, or build -scheme App -destination\n\u0027platform=iOS Simulator,name=iPhone 17\u0027, or compose up -d --build. The answer says whether it succeeded, the\nexit code, what the tests said when there were any, and where the log is on this machine, which build_logs\nreads. Outputs stay on the host, where the next run finds them; build_fetch brings named paths back. An\nxcodebuild run keeps its derived data under the host\u0027s root, and a destination that names a simulator by name\ngets a clone of it for the run alone, deleted when the run ends. A docker build or run carries the label\nsnail.owner, and a compose stand is the project s3l-\u003Crepository\u003E-\u003Cbranch\u003E unless -p names one. The work\nruns as a job: the answer is the job\u0027s report, with the build as its result when it ends within the wait, or\nthe running job, whose resource job://buildbridge/\u003Ckind\u003E/\u003Cid\u003E carries it once it ends and whose message names\nthe log. A run may take up to 3600 seconds; one workspace takes one run at a time, and a second waits its turn.",
+    "description": "Build, test or publish a working copy on a host and get back how it went. The copy a path lies in is delivered\nfirst (as build_sync does), then the program of the kind \u2014 dotnet, xcode, docker, linux, android or script: dotnet, xcodebuild, docker, or dotnet\ninside the host\u0027s s3l-build-dotnet or s3l-build-android image \u2014 runs in the workspace with the arguments\ngiven, such as test -c Release, or build -scheme App -destination \u0027platform=iOS Simulator,name=iPhone 17\u0027, or\ncompose up -d --build. The linux kind is for a Linux target, Native AOT for Linux or tests on Linux, the\nandroid kind for an Android build; both mount the workspace, the packages and the feeds into the container,\nand the android image runs under emulation on an Apple Silicon host. The script kind runs a script of the\nrepository as it is: the first argument is its path from the workspace\u0027s root, such as\ntools/native/build-xcframework.sh, the rest its arguments; it must be executable, as git keeps it, and finds\nthe host\u0027s dotnet on its path \u2014 for what a build needs that no one program says, before another run. The\nanswer says whether it succeeded, the\nexit code, what the tests said when there were any, and where the log is on this machine, which build_logs\nreads. Outputs stay on the host, where the next run finds them; build_fetch brings named paths back. An\nxcodebuild run keeps its derived data under the host\u0027s root, a destination that names a simulator by name\ngets a clone of it for the run alone, deleted when the run ends, and a project with a project.yml beside it is\ngenerated on the host by xcodegen first, since a generated project is what git ignores. A docker build or run carries the label\nsnail.owner, and a compose stand is the project s3l-\u003Crepository\u003E-\u003Cbranch\u003E unless -p names one. The work\nruns as a job: the answer is the job\u0027s report, with the build as its result when it ends within the wait, or\nthe running job, whose resource job://buildbridge/\u003Ckind\u003E/\u003Cid\u003E carries it once it ends and whose message names\nthe log. A run may take up to 3600 seconds; one workspace takes one run at a time, and a second waits its turn.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -90,7 +90,7 @@
           "type": "string"
         },
         "kind": {
-          "description": "Which program runs: dotnet, xcode or docker.",
+          "description": "Which program runs: dotnet, xcode, docker, linux, android or script.",
           "type": "string"
         },
         "arguments": {
@@ -283,7 +283,7 @@
   },
   {
     "name": "build_diagnose",
-    "description": "Say what state this server is in: its version, the hosts its settings name, whether ssh, rsync and git are on\nthis machine, and where it keeps its data. Changes nothing. Start here when a build does not go where it should.",
+    "description": "Say what state this server is in: its version, the hosts its settings name, whether ssh, rsync, git and\nmutagen are on this machine, what carries a copy, and where it keeps its data. Changes nothing. Start here\nwhen a build does not go where it should.",
     "inputSchema": {
       "type": "object",
       "properties": {}

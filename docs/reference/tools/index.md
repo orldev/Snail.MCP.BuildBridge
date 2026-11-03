@@ -13,4 +13,4 @@ The names, descriptions and schemas are generated from the server itself, so the
 | [`build_cancel`](builds.md#build_cancel) | Builds | Stop a running job of this server — a build or a provisioning — by the job resource build_run or build_provision answered with: the command is stopped on the… |
 | [`build_fetch`](builds.md#build_fetch) | Builds | Bring named paths of a workspace back to this machine: test results, a bundle for a simulator, a package, a published folder. |
 | [`build_clean`](builds.md#build_clean) | Builds | Give a host its room back, in two calls: first a plan of a scope is decided and shown under a planId, then that plan, and only it, is carried out when called… |
-| [`build_diagnose`](diagnostics.md#build_diagnose) | Diagnostics | Say what state this server is in: its version, the hosts its settings name, whether ssh, rsync and git are on this machine, and where it keeps its data. |
+| [`build_diagnose`](diagnostics.md#build_diagnose) | Diagnostics | Say what state this server is in: its version, the hosts its settings name, whether ssh, rsync, git and mutagen are on this machine, what carries a copy, and… |

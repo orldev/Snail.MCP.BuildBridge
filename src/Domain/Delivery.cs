@@ -6,7 +6,15 @@ namespace Snail.MCP.BuildBridge.Domain;
 /// <param name="Bytes">The bytes that went over the wire; 0 when nothing was sent.</param>
 /// <param name="Took">How long the delivery took.</param>
 /// <param name="IsDryRun">Whether the files were only listed, not sent.</param>
-public sealed record Delivery(WorkspaceKey Key, IReadOnlyList<string> Files, long Bytes, TimeSpan Took, bool IsDryRun);
+/// <param name="Means">What carried the copy: rsync, which names every file it moved, or mutagen, whose session keeps the copy mirrored and names none.</param>
+public sealed record Delivery(WorkspaceKey Key, IReadOnlyList<string> Files, long Bytes, TimeSpan Took, bool IsDryRun, string Means = Delivery.Rsync)
+{
+    /// <summary>A delivery by rsync, one mirror per run.</summary>
+    public const string Rsync = "rsync";
+
+    /// <summary>A delivery by a Mutagen session, which mirrors the copy as it changes.</summary>
+    public const string Mutagen = "mutagen";
+}
 
 /// <summary>A command as it ran on a host: how it ended and where its output went.</summary>
 /// <param name="ExitCode">The exit code; -1 when the command did not end by itself.</param>

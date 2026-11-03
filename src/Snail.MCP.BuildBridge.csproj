@@ -13,6 +13,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="../deploy/images/dotnet/Dockerfile" LogicalName="images/dotnet/Dockerfile" />
+    <EmbeddedResource Include="../deploy/images/android/Dockerfile" LogicalName="images/android/Dockerfile" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Snail.MCP.BuildBridge.Tests" />
     <InternalsVisibleTo Include="Snail.MCP.BuildBridge.Benchmarks" />
   </ItemGroup>

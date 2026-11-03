@@ -45,11 +45,32 @@ public static class Messages
     /// <summary>What a person does when Docker is missing.</summary>
     public const string InstallDocker = "Install OrbStack (orbstack.dev) and start it; docker then answers over ssh too.";
 
+    /// <summary>What a person does when an Apple Silicon host cannot run x64 programs, which build tools still ship as — protoc of Grpc.Tools among them.</summary>
+    public const string InstallRosetta = "Install Rosetta on the host, which means agreeing to Apple's licence: softwareupdate --install-rosetta --agree-to-license; x64 build tools such as protoc need it.";
+
     /// <summary>What a person does when the host may sleep.</summary>
     public const string KeepAwake = "Keep the host awake: sudo pmset -a disablesleep 1, or Snail SleepOf; a sleeping host takes no builds.";
 
     /// <summary>A word that is not a kind of build.</summary>
-    public static string UnknownKind(string word) => $"\"{word}\" is not a kind of build: dotnet, xcode or docker.";
+    public static string UnknownKind(string word) => $"\"{word}\" is not a kind of build: dotnet, xcode, docker, linux, android or script.";
+
+    /// <summary>A script run without a script named.</summary>
+    public const string NoScriptNamed = "A script run names the script first: its path from the working copy's root, then its arguments.";
+
+    /// <summary>A script the copy does not have.</summary>
+    public static string NoScript(string path, string copy) => $"{path} is not a file of the working copy at {copy}, and would not be on the host either.";
+
+    /// <summary>A script path that leaves the workspace.</summary>
+    public static string ScriptOutside(string path) => $"{path} is not a path inside the working copy; a script runs from the workspace's root.";
+
+    /// <summary>A host whose home the probe did not report, without which a container cannot be given the workspace.</summary>
+    public static string HomeUnknown(string name) => $"{name} did not say where its home is, so the workspace cannot be mounted into a container.";
+
+    /// <summary>A Mutagen session that could not be made or caught up.</summary>
+    public static string SessionFailed(string session, string reason) => $"The session {session} did not deliver the copy: {reason}";
+
+    /// <summary>What a person does when mutagen is wanted and missing.</summary>
+    public const string InstallMutagen = "Install Mutagen on this machine: brew install mutagen-io/mutagen/mutagen; or set Sync to rsync.";
 
     /// <summary>A fetch that names no path.</summary>
     public const string NothingToFetch = "Name at least one path of the workspace to bring back.";
@@ -65,6 +86,12 @@ public static class Messages
 
     /// <summary>What a device name must be.</summary>
     public const string SimulatorHint = "Name a simulator the host has, as xcrun simctl list devices shows it, or give the destination an id= instead of a name=.";
+
+    /// <summary>A project that could not be generated from its spec.</summary>
+    public static string GenerationFailed(string log) => $"xcodegen did not generate the project; the log says why: {log}";
+
+    /// <summary>Where xcodegen comes from on a host.</summary>
+    public const string GenerationHint = "build_provision puts xcodegen under the host's root when Xcode is there.";
 
     /// <summary>A survey that did not end well.</summary>
     public static string SurveyFailed(string name, string reason) => $"{name} was not surveyed: {reason}";

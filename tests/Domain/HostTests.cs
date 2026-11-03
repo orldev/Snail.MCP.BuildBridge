@@ -21,10 +21,25 @@ public sealed class HostTests
         Assert.False(state.Has(Capability.Docker));
     }
 
+    [Theory]
+    [InlineData("~/.s3l-build", "/Users/dev", "/Users/dev/.s3l-build")]
+    [InlineData("/Volumes/Build/s3l", "/Users/dev", "/Volumes/Build/s3l")]
+    public void RootOn_HomeReported_IsTheRootAsAnAbsolutePath(string root, string home, string expected) =>
+        Assert.Equal(expected, new Host("mini", "mini", root).RootOn(home));
+
+    [Fact]
+    public void ImageOf_ContainerKinds_NameAnImageAndHostKindsNone()
+    {
+        Assert.Equal(BuildImage.Dotnet, BuildKind.Linux.ImageOf());
+        Assert.Equal(BuildImage.Android, BuildKind.Android.ImageOf());
+        Assert.Null(BuildKind.Dotnet.ImageOf());
+        Assert.Equal(Capability.Docker, BuildKind.Android.Needs());
+    }
+
     [Fact]
     public void Needs_EveryKind_NamesACapability()
     {
         foreach (var kind in Enum.GetValues<BuildKind>())
-            Assert.True(Enum.IsDefined(kind.Needs()));
+            Assert.True(kind.Needs() is not { } capability || Enum.IsDefined(capability));
     }
 }

@@ -1,0 +1,54 @@
+using Microsoft.Extensions.Options;
+using Snail.MCP.BuildBridge.Application;
+using Snail.MCP.BuildBridge.Application.Ports;
+using Snail.MCP.BuildBridge.Configuration;
+using Snail.MCP.BuildBridge.Domain;
+
+namespace Snail.MCP.BuildBridge.Adapters;
+
+/// <summary>A copy mirrored into its workspace with rsync, once per delivery.</summary>
+/// <remarks>
+/// What git ignores and what a build makes again are excluded, and an excluded folder already on the host — <c>bin</c>,
+/// <c>obj</c> — is left alone, so a build there stays incremental. A tracked file deleted here is deleted there. The
+/// excludes go to rsync on its standard input: openrsync knows no filter rules, and the list can be long.
+/// </remarks>
+public sealed class RsyncCourier(IPrograms programs, ICopies copies, RemoteShell shell, IOptions<BuildOptions> options, TimeProvider clock) : ICourier
+{
+    /// <inheritdoc/>
+    public async Task<Answer<Delivery>> DeliverAsync(Host host, LocalCopy copy, bool isDryRun, CancellationToken cancellationToken)
+    {
+        var key = copy.Workspace;
+        var words = shell.Command(host, RemoteShell.Prelude(host) + $"mkdir -p {RemoteShell.Under(host, key.Folder)}");
+        var made = await programs.RunAsync(words[0], words[1..], null, TimeSpan.FromSeconds(options.Value.ProbeSeconds), cancellationToken);
+        if (!made.IsSuccess)
+            return Answer.Failed<Delivery>(Messages.DeliveryFailed(host.Name, Rsync.Reason(made)));
+
+        var ignored = await copies.IgnoredAsync(copy, cancellationToken);
+        string excludes = string.Join('\n', Excludes(copy, ignored)) + '\n';
+        var started = clock.GetTimestamp();
+
+        var arguments = Rsync.Arguments(options.Value, host, isDryRun, true, $"{copy.Path}/", $"{RemoteShell.Rsync(host, key.Folder)}/");
+        var run = await programs.RunAsync(options.Value.Rsync, arguments, null, TimeSpan.FromSeconds(options.Value.TransferSeconds), cancellationToken, excludes);
+        if (run.IsMissing)
+            return Answer.Failed<Delivery>(Messages.ProgramMissing(options.Value.Rsync));
+        if (!run.IsSuccess)
+            return Answer.Failed<Delivery>(Messages.DeliveryFailed(host.Name, Rsync.Reason(run)));
+
+        return Answer.Ok(new Delivery(key, Rsync.Changed(run.Output), Rsync.TransferredBytes(run.Output), clock.GetElapsedTime(started), isDryRun));
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>rsync keeps nothing between deliveries, so there is nothing to let go of.</remarks>
+    public Task ForgetAsync(Host host, WorkspaceKey key, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>What a delivery leaves out, one pattern each: what a build makes again, a worktree's dead .git file, and what git ignores, anchored at the copy's root.</summary>
+    public IReadOnlyList<string> Excludes(LocalCopy copy, IReadOnlyList<string> ignored)
+    {
+        var patterns = new List<string>(options.Value.Excludes);
+        if (copy.IsWorktree)
+            patterns.Add("/.git");
+        patterns.AddRange(ignored.Select(entry => $"/{entry}"));
+
+        return patterns;
+    }
+}

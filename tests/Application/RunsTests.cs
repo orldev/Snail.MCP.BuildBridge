@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Options;
 using Snail.MCP.BuildBridge.Application;
 using Snail.MCP.BuildBridge.Configuration;
+using Snail.MCP.BuildBridge.Tools;
 using Snail.Sdk.Mcp.Hosting.Jobs;
+using Snail.Sdk.Mcp.Testing;
 
 namespace Snail.MCP.BuildBridge.Tests.Application;
 
@@ -20,7 +22,7 @@ public sealed class RunsTests
     {
         var builder = new FakeBuilder();
         var toolchains = (has ?? [Capability.Dotnet]).Select(capability => new Toolchain(capability, "1"));
-        builder.Up[Mini.Name] = new HostState(Mini, true, [.. toolchains], 400, null);
+        builder.Up[Mini.Name] = new HostState(Mini, true, [.. toolchains], 400, null, "/Users/dev");
         var options = Options.Create(new BuildOptions { Hosts = [new HostSetting { Name = Mini.Name, Address = Mini.Address }], Feeds = feeds ?? [] });
         var hosts = new Hosts(options, builder);
 
@@ -117,6 +119,59 @@ public sealed class RunsTests
     }
 
     [Fact]
+    public async Task RunAsync_XcodeWithASpecBesideTheProject_GeneratesTheProjectFirst()
+    {
+        var (runs, builder) = Of([Capability.Xcode]);
+        string copy = TestFolder.Create();
+        Directory.CreateDirectory(Path.Combine(copy, "apple"));
+        await File.WriteAllTextAsync(Path.Combine(copy, "apple", "project.yml"), "name: App\n");
+        var copies = new FakeCopies { Copy = new LocalCopy(copy, "Sample", "main", null, false) };
+        var logs = new Logs(TimeProvider.System);
+        var options = Options.Create(new BuildOptions { Hosts = [new HostSetting { Name = Mini.Name, Address = Mini.Address }] });
+        runs = new Runs(new Hosts(options, builder), copies, builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), options);
+
+        var answer = await runs.RunAsync(copy, BuildKind.Xcode, ["build", "-project", "apple/App.xcodeproj", "-scheme", "App"], null, new Steps(), CancellationToken.None);
+
+        Assert.Null(answer.Error);
+        Assert.Equal(2, builder.Executed.Count);
+        Assert.Equal(["xcodegen", "generate", "--spec", "apple/project.yml", "--project", "apple"], builder.Executed[0].Command);
+        Assert.Equal("xcodebuild", builder.Executed[1].Command[0]);
+    }
+
+    [Fact]
+    public async Task RunAsync_AScriptOfTheCopy_RunsItAsItIs()
+    {
+        var (runs, builder) = Of([]);
+        string copy = TestFolder.Create();
+        Directory.CreateDirectory(Path.Combine(copy, "tools"));
+        await File.WriteAllTextAsync(Path.Combine(copy, "tools", "pack.sh"), "#!/bin/sh\necho packed\n");
+        var copies = new FakeCopies { Copy = new LocalCopy(copy, "Sample", "main", null, false) };
+        var logs = new Logs(TimeProvider.System);
+        var options = Options.Create(new BuildOptions { Hosts = [new HostSetting { Name = Mini.Name, Address = Mini.Address }] });
+        runs = new Runs(new Hosts(options, builder), copies, builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), options);
+
+        var answer = await runs.RunAsync(copy, BuildKind.Script, ["tools/pack.sh", "Debug"], null, new Steps(), CancellationToken.None);
+
+        Assert.Null(answer.Error);
+        Assert.Equal(["tools/pack.sh", "Debug"], Assert.Single(builder.Executed).Command);
+    }
+
+    [Theory]
+    [InlineData("tools/missing.sh")]
+    [InlineData("../elsewhere.sh")]
+    [InlineData("/usr/bin/true")]
+    public async Task RunAsync_AScriptNotOfTheCopy_RunsNothing(string script)
+    {
+        var (runs, builder) = Of([]);
+
+        var answer = await runs.RunAsync("/Users/me/Sample", BuildKind.Script, [script], null, new Steps(), CancellationToken.None);
+
+        Assert.NotNull(answer.Error);
+        Assert.Empty(builder.Executed);
+        Assert.Empty(builder.Delivered);
+    }
+
+    [Fact]
     public async Task RunAsync_DockerBuild_CarriesTheOwnerLabel()
     {
         var (runs, builder) = Of(has: [Capability.Docker]);
@@ -125,6 +180,32 @@ public sealed class RunsTests
 
         Assert.Equal(["docker", "build", "--label", "snail.owner=buildbridge/Sample/main", "-t", "sample", "."], Assert.Single(builder.Executed).Command);
         Assert.Empty(builder.Acquired);
+    }
+
+    [Fact]
+    public async Task RunAsync_LinuxTest_RunsDotnetInsideTheDotnetImageOnTheHost()
+    {
+        var (runs, builder) = Of([Capability.Docker]);
+
+        var answer = await runs.RunAsync("/Users/me/Sample", BuildKind.Linux, ["test"], null, new Steps(), CancellationToken.None);
+
+        Assert.Null(answer.Error);
+        var command = Assert.Single(builder.Executed).Command;
+        Assert.Equal(["docker", "run"], command.Take(2));
+        Assert.Contains("/Users/dev/.s3l-build/workspaces/Sample/main:/work", command);
+        Assert.Contains("s3l-build-dotnet:10.0.302", command);
+        Assert.Equal(["dotnet", "test"], command.TakeLast(2));
+    }
+
+    [Fact]
+    public async Task RunAsync_LinuxOnAHostWithoutDocker_RunsNothing()
+    {
+        var (runs, builder) = Of([Capability.Dotnet]);
+
+        var answer = await runs.RunAsync("/Users/me/Sample", BuildKind.Linux, ["test"], null, new Steps(), CancellationToken.None);
+
+        Assert.NotNull(answer.Error);
+        Assert.Empty(builder.Executed);
     }
 
     [Fact]
@@ -164,6 +245,6 @@ public sealed class RunsTests
     [Fact]
     public void KindOf_UnknownWord_NamesTheKindsThereAre()
     {
-        Assert.Contains("dotnet, xcode or docker", Runs.KindOf("make").Error, StringComparison.Ordinal);
+        Assert.Contains(ToolDescriptions.Kinds, Runs.KindOf("make").Error, StringComparison.Ordinal);
     }
 }

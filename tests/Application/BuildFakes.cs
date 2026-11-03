@@ -64,11 +64,14 @@ internal sealed class FakeBuilder : IBuilder
 
     public List<string> Released { get; } = [];
 
+    /// <summary>How many clones the host gives before refusing; every one unless a test says otherwise.</summary>
+    public int SimulatorsAvailable { get; set; } = int.MaxValue;
+
     public Task<Answer<string>> AcquireSimulatorAsync(Host host, string device, string clone, CancellationToken cancellationToken)
     {
         Acquired.Add((device, clone));
 
-        return Task.FromResult(Answer.Ok($"UDID-{Acquired.Count}"));
+        return Task.FromResult(Acquired.Count > SimulatorsAvailable ? Answer.Failed<string>($"{host.Name} has no room for another simulator") : Answer.Ok($"UDID-{Acquired.Count}"));
     }
 
     public Task ReleaseSimulatorAsync(Host host, string udid, CancellationToken cancellationToken)
@@ -82,6 +85,19 @@ internal sealed class FakeBuilder : IBuilder
         Task.FromResult(Answer.Ok(new Collected(folder, [], 0)));
 
     public Task<Answer<bool>> RemoveAsync(Host host, WorkspaceKey key, CancellationToken cancellationToken) => Task.FromResult(Answer.Ok(true));
+
+    /// <summary>Each supply asked for, in order.</summary>
+    public List<Supply> Supplied { get; } = [];
+
+    /// <summary>Why a supply fails, when it does.</summary>
+    public string? SupplyError { get; set; }
+
+    public Task<Answer<IReadOnlyList<string>>> SupplyAsync(Host host, Supply supply, CancellationToken cancellationToken)
+    {
+        Supplied.Add(supply);
+
+        return Task.FromResult(SupplyError is { } error ? Answer.Failed<IReadOnlyList<string>>(error) : Answer.Ok(supply.Words));
+    }
 
     /// <summary>What a survey of any host finds.</summary>
     public Survey? Found { get; set; }

@@ -13,6 +13,15 @@ namespace Snail.MCP.BuildBridge.Domain;
 /// <param name="LowDiskGigabytes">Free gigabytes below which a sweep runs before a build does.</param>
 public sealed record SweepRules(int WorkspaceDays = 14, int JobDays = 30, int ImageDays = 7, int BuildCacheHours = 24, double LowDiskGigabytes = 20)
 {
+    /// <summary>The SDK version the settings name, which a sweep of old versions keeps.</summary>
+    public string KeptSdk { get; init; } = string.Empty;
+
+    /// <summary>The Android SDK packages the settings name, which a sweep of old versions keeps.</summary>
+    public IReadOnlyList<string> KeptPackages { get; init; } = [];
+
+    /// <summary>The tags of the toolchain images the settings name, which a sweep of old versions keeps.</summary>
+    public IReadOnlyList<string> KeptImages { get; init; } = [];
+
     /// <summary>Whether a workspace built or delivered last at <paramref name="lastUsed"/> is done with at <paramref name="now"/>.</summary>
     public bool IsStale(DateTimeOffset lastUsed, DateTimeOffset now) => now - lastUsed > TimeSpan.FromDays(WorkspaceDays);
 

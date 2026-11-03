@@ -27,10 +27,14 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
     /// <inheritdoc/>
     public async Task<HostState> ProbeAsync(Host host, CancellationToken cancellationToken)
     {
-        const string script = """
+        string script = $$$"""
             printf 'dotnet=%s\n' "$(dotnet --version 2>/dev/null)"
+            printf 'sdks=%s\n' "$(ls {{{RemoteShell.Under(host, "dotnet/sdk")}}} 2>/dev/null | tr '\n' ' ')"
             printf 'xcode=%s\n' "$(xcodebuild -version 2>/dev/null | head -n 1 | sed 's/^Xcode //')"
             printf 'docker=%s\n' "$(docker version --format '{{.Server.Version}}' 2>/dev/null)"
+            android=""; ndk="${ANDROID_NDK_HOME##*/}"
+            if [ -n "$JAVA_HOME" ] && [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then android="jdk $(java -version 2>&1 | head -n 1 | sed 's/.*"\(.*\)".*/\1/'), ndk ${ndk:-none}"; fi
+            printf 'android=%s\n' "$android"
             printf 'free=%s\n' "$(df -g "$HOME" | tail -n 1 | awk '{print $4}')"
             printf 'home=%s\n' "$HOME"
             """;
@@ -48,11 +52,14 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
         {
             new(Capability.Dotnet, Version(answers, "dotnet")),
             new(Capability.Xcode, Version(answers, "xcode")),
-            new(Capability.Docker, Version(answers, "docker"))
+            new(Capability.Docker, Version(answers, "docker")),
+            new(Capability.Android, Version(answers, "android"))
         };
         double? free = double.TryParse(answers.GetValueOrDefault("free"), NumberStyles.Float, CultureInfo.InvariantCulture, out double gigabytes) ? gigabytes : null;
 
-        return new HostState(host, true, toolchains, free, null, Version(answers, "home"));
+        var sdks = answers.GetValueOrDefault("sdks", string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        return new HostState(host, true, toolchains, free, null, Version(answers, "home")) { Sdks = sdks };
     }
 
     /// <inheritdoc/>
@@ -114,7 +121,7 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
     /// <inheritdoc/>
     public async Task<Answer<Execution>> ExecuteAsync(Host host, WorkspaceKey key, IReadOnlyList<string> command, string log, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        string workspace = RemoteShell.Under(host, key.Folder);
+        string workspace = RemoteShell.Under(host, key.CopyFolder);
         string pidFile = RemoteShell.Under(host, $"{key.Folder}/{PidFileName}");
         string script = $"""
             {RemoteShell.Prelude(host)}cd {workspace} || exit 97
@@ -185,7 +192,7 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
             string into = Path.Combine(folder, Path.GetDirectoryName(path) ?? string.Empty);
             Directory.CreateDirectory(into);
 
-            var arguments = Rsync.Arguments(options.Value, host, false, false, RemoteShell.Rsync(host, $"{key.Folder}/{path}"), $"{into}/");
+            var arguments = Rsync.Arguments(options.Value, host, false, false, RemoteShell.Rsync(host, $"{key.CopyFolder}/{path}"), $"{into}/");
             var run = await programs.RunAsync(options.Value.Rsync, arguments, null, TimeSpan.FromSeconds(options.Value.TransferSeconds), cancellationToken);
             if (run.IsMissing)
                 return Answer.Failed<Collected>(Messages.ProgramMissing(options.Value.Rsync));
@@ -202,6 +209,97 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
 
         return Answer.Ok(new Collected(folder, files, bytes));
     }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Every installer is asked only for what is not there, and reads no terminal, so a licence not yet accepted fails
+    /// sdkmanager instead of waiting on a prompt; the answer then carries the command a person runs, the same
+    /// provisioning names. sdkmanager draws its progress with carriage returns and ends without a line break, so the
+    /// script's own lines are read between either kind of break. Google now names a platform with a minor version —
+    /// <c>platforms;android-37.0</c> — where a build names its API level, so a package not on offer as named is taken
+    /// as the first on offer with a minor version after it. A workload install runs in the copy, so dotnet takes the
+    /// SDK its global.json names. A second SDK goes beside the first without the host's unversioned files: dotnet-install
+    /// would overwrite the dotnet muxer in place, and macOS kills a program whose file changed under its cached code
+    /// signature — every dotnet on the host answered Killed: 9 after the first SDK supplied on 2026-11-03, until the
+    /// muxer was given a fresh inode.
+    /// </remarks>
+    public async Task<Answer<IReadOnlyList<string>>> SupplyAsync(Host host, Supply supply, CancellationToken cancellationToken)
+    {
+        string script = supply.Kind switch
+        {
+            SupplyKind.AndroidPackages => PackagesScript(host, supply.Names),
+            SupplyKind.Sdk => SdkScript(host, supply.Names[0]),
+            SupplyKind.Workloads => WorkloadsScript(host, supply),
+            _ => throw new ArgumentOutOfRangeException(nameof(supply), supply.Kind, null)
+        };
+
+        var run = await RunScriptAsync(host, script, cancellationToken, TimeSpan.FromSeconds(options.Value.RunSeconds));
+        if (!run.IsSuccess)
+            return Answer.Failed<IReadOnlyList<string>>(Messages.SupplyFailed(host.Name, supply.Words, Rsync.Reason(run)));
+
+        var lines = run.Output.Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        string root = lines.FirstOrDefault(line => line.StartsWith("s3l-root ", StringComparison.Ordinal))?[9..] ?? host.Root;
+        var said = lines.LastOrDefault(line => line.StartsWith("s3l-supply ", StringComparison.Ordinal))?.Split(' ', StringSplitOptions.RemoveEmptyEntries) ?? [];
+
+        return said switch
+        {
+            ["s3l-supply", "ok", .. var installed] => Answer.Ok((supply with { Names = installed }).Words),
+            ["s3l-supply", "none"] => Answer.Failed<IReadOnlyList<string>>(Messages.HostCannot(host.Name, supply.Kind == SupplyKind.AndroidPackages ? "android" : "dotnet"), Messages.ProvisionFirst),
+            ["s3l-supply", "left", .. var left] => Answer.Failed<IReadOnlyList<string>>(Messages.SupplyFailed(host.Name, (supply with { Names = left }).Words, LastLineOf(run.Error)), supply.Kind == SupplyKind.AndroidPackages ? Messages.SupplyHint(root) : null),
+            _ => Answer.Failed<IReadOnlyList<string>>(Messages.SupplyFailed(host.Name, supply.Words, "the installer said nothing this server reads"))
+        };
+    }
+
+    private static string PackagesScript(Host host, IReadOnlyList<string> packages) =>
+        $$$"""
+        ROOT={{{RemoteShell.Root(host)}}}
+        SDKMANAGER="$ROOT/android/cmdline-tools/latest/bin/sdkmanager"
+        echo "s3l-root $ROOT"
+        [ -x "$SDKMANAGER" ] && [ -x "$ROOT/jdk/current/bin/java" ] || { echo "s3l-supply none"; exit 0; }
+        PACKAGES={{{RemoteShell.Quoted(string.Join(' ', packages))}}}
+        installed="$("$SDKMANAGER" --sdk_root="$ROOT/android" --list_installed 2>/dev/null)"
+        missing=""
+        for package in $PACKAGES; do printf '%s\n' "$installed" | grep -q "^ *$package " || missing="$missing $package"; done
+        todo=""; left=""
+        if [ -n "$missing" ]; then
+          available="$("$SDKMANAGER" --sdk_root="$ROOT/android" --list 2>/dev/null)"
+          for package in $missing; do
+            if printf '%s\n' "$available" | grep -q "^ *$package "; then wanted="$package"
+            else wanted="$(printf '%s\n' "$available" | grep -o "^ *$package\.[0-9][0-9]* " | head -n 1 | tr -d ' ')"; fi
+            printf '%s\n' "$installed" | grep -q "^ *${wanted:-$package} " || todo="$todo ${wanted:-$package}"
+          done
+          [ -n "$todo" ] && "$SDKMANAGER" --sdk_root="$ROOT/android" $todo </dev/null
+          installed="$("$SDKMANAGER" --sdk_root="$ROOT/android" --list_installed 2>/dev/null)"
+          for package in $todo; do printf '%s\n' "$installed" | grep -q "^ *$package " || left="$left $package"; done
+        fi
+        if [ -z "$left" ]; then echo "s3l-supply ok$todo"; else echo "s3l-supply left$left"; fi
+        """;
+
+    private static string SdkScript(Host host, string version) =>
+        $$$"""
+        ROOT={{{RemoteShell.Root(host)}}}
+        VERSION={{{RemoteShell.Quoted(version)}}}
+        echo "s3l-root $ROOT"
+        if [ -d "$ROOT/dotnet/sdk/$VERSION" ]; then echo "s3l-supply ok"; exit 0; fi
+        mkdir -p "$ROOT/bin" "$ROOT/dotnet"
+        curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$ROOT/bin/dotnet-install.sh" && bash "$ROOT/bin/dotnet-install.sh" --version "$VERSION" --install-dir "$ROOT/dotnet" --no-path --skip-non-versioned-files </dev/null
+        if [ -d "$ROOT/dotnet/sdk/$VERSION" ]; then echo "s3l-supply ok $VERSION"; else echo "s3l-supply left $VERSION"; fi
+        """;
+
+    private static string WorkloadsScript(Host host, Supply supply) =>
+        $$$"""
+        ROOT={{{RemoteShell.Root(host)}}}
+        IDS={{{RemoteShell.Quoted(string.Join(' ', supply.Names))}}}
+        echo "s3l-root $ROOT"
+        command -v dotnet >/dev/null 2>&1 || { echo "s3l-supply none"; exit 0; }
+        {{{(supply.Folder is { } folder ? $"cd {RemoteShell.Under(host, folder)} || exit 97" : string.Empty)}}}
+        missing=""
+        for id in $IDS; do dotnet workload list 2>/dev/null | grep -q "^$id " || missing="$missing $id"; done
+        [ -n "$missing" ] && dotnet workload install $missing </dev/null
+        left=""
+        for id in $missing; do dotnet workload list 2>/dev/null | grep -q "^$id " || left="$left $id"; done
+        if [ -z "$left" ]; then echo "s3l-supply ok$missing"; else echo "s3l-supply left$left"; fi
+        """;
 
     /// <inheritdoc/>
     public async Task<Answer<Survey>> SurveyAsync(Host host, CancellationToken cancellationToken)
@@ -227,9 +325,12 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
         {
             SweepKind.Derived when item.Name == WorkspaceKey.Safe(item.Name) => $"rm -rf {RemoteShell.Under(host, $"derived/{item.Name}")} && echo removed",
             SweepKind.Images when item.Name == "all" => $"docker image prune -a --force --filter label={DockerCommand.Label} >/dev/null && (docker image ls --filter label={ProvisionScripts.ImageLabel} -q | xargs docker image rm -f >/dev/null 2>&1; echo removed)",
+            SweepKind.Images when item.Name.Contains(':') && AndroidPackages.IsName(item.Name.Replace(':', ';')) => $"docker image rm -f {RemoteShell.Quoted(item.Name)} >/dev/null && echo removed",
+            SweepKind.Sdk when SdkWish.IsVersion(item.Name) => $"rm -rf {RemoteShell.Under(host, $"dotnet/sdk/{item.Name}")} && echo removed",
+            SweepKind.Package when AndroidPackages.IsName(item.Name) => $"{RemoteShell.Under(host, "android/cmdline-tools/latest/bin/sdkmanager")} --sdk_root={RemoteShell.Under(host, "android")} --uninstall {RemoteShell.Quoted(item.Name)} </dev/null >/dev/null 2>&1 && echo removed",
             SweepKind.Images => $"docker image prune -a --force --filter label={DockerCommand.Label} --filter until={item.Name} >/dev/null && echo removed",
             SweepKind.BuildCache => $"docker builder prune -a --force {(item.Name == "all" ? string.Empty : $"--filter until={item.Name}")} >/dev/null && echo removed",
-            SweepKind.Packages => $"rm -rf {RemoteShell.Under(host, "nuget")} && echo removed",
+            SweepKind.Packages => $"rm -rf {RemoteShell.Under(host, "nuget")} {RemoteShell.Under(host, "gradle")} && echo removed",
             _ => string.Empty
         };
         if (script.Length == 0)
@@ -279,6 +380,9 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
 
         await RunScriptAsync(host, script, CancellationToken.None);
     }
+
+    private static string LastLineOf(string text) =>
+        text.Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault() ?? "sdkmanager said nothing";
 
     private static Dictionary<string, string> Parsed(string output)
     {

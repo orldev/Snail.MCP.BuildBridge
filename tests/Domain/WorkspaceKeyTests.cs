@@ -10,6 +10,15 @@ public sealed class WorkspaceKeyTests
         Assert.Equal("workspaces/Anonym/feat-web-3.0", key.Folder);
     }
 
+    /// <summary>Conformance and git read a name from the root folder, so the copy lies in a folder named as the repository is, not as the branch.</summary>
+    [Fact]
+    public void CopyFolder_AnyKey_IsAFolderNamedAsTheRepositoryInsideTheWorkspace()
+    {
+        var key = new WorkspaceKey("Anonym", "feat/web-3.0");
+
+        Assert.Equal("workspaces/Anonym/feat-web-3.0/Anonym", key.CopyFolder);
+    }
+
     [Theory]
     [InlineData("main", "main")]
     [InlineData("release/2.0", "release-2.0")]

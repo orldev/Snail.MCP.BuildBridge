@@ -11,7 +11,7 @@ public sealed class Provisioning(Hosts hosts, IBuilder builder, Logs logs, IOpti
     /// <summary>Provisions the host named, or the first; a host that does not answer is not provisioned.</summary>
     public async Task<Answer<Provisioned>> RunAsync(string? host, CancellationToken cancellationToken)
     {
-        var ready = await hosts.ReadyAsync(host, null, cancellationToken);
+        var ready = await hosts.ReadyAsync(host, [], cancellationToken);
         if (ready.Value is not { } state)
             return Answer.Failed<Provisioned>(ready.Error!, ready.Hint);
 

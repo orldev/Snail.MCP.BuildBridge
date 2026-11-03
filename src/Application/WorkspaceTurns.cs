@@ -13,9 +13,13 @@ public sealed class WorkspaceTurns
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _turns = new(StringComparer.Ordinal);
 
     /// <summary>Waits for the turn of <paramref name="key"/> on <paramref name="host"/>; <paramref name="isWaiting"/> is told when another holds it now.</summary>
-    public async Task<IDisposable> TakeAsync(Host host, WorkspaceKey key, Action isWaiting, CancellationToken cancellationToken)
+    public Task<IDisposable> TakeAsync(Host host, WorkspaceKey key, Action isWaiting, CancellationToken cancellationToken) =>
+        TakeAsync(host, key.Folder, isWaiting, cancellationToken);
+
+    /// <summary>Waits for the turn of <paramref name="what"/> on <paramref name="host"/> — a workspace's folder, or another thing of the host's one caller may touch at a time; <paramref name="isWaiting"/> is told when another holds it now.</summary>
+    public async Task<IDisposable> TakeAsync(Host host, string what, Action isWaiting, CancellationToken cancellationToken)
     {
-        var turn = _turns.GetOrAdd($"{host.Name}/{key.Folder}", _ => new SemaphoreSlim(1, 1));
+        var turn = _turns.GetOrAdd($"{host.Name}/{what}", _ => new SemaphoreSlim(1, 1));
         if (!await turn.WaitAsync(0, cancellationToken))
         {
             isWaiting();

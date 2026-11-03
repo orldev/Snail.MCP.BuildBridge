@@ -38,7 +38,7 @@ public sealed class MutagenCourierTests
             await File.WriteAllTextAsync(Path.Combine(copy.Path, "later.txt"), "later", CancellationToken.None);
             var second = await courier.DeliverAsync(host, copy, false, CancellationToken.None);
 
-            string workspace = Path.Combine(host.Root, copy.Workspace.Folder);
+            string workspace = Path.Combine(host.Root, copy.Workspace.CopyFolder);
             Assert.Equal(Delivery.Mutagen, Assert.IsType<Delivery>(first.Value).Means);
             Assert.Null(second.Error);
             Assert.True(File.Exists(Path.Combine(workspace, "README.md")));
@@ -64,7 +64,7 @@ public sealed class MutagenCourierTests
         Assert.True(delivery.IsDryRun);
         Assert.Equal(Delivery.Rsync, delivery.Means);
         Assert.Contains("README.md", delivery.Files);
-        Assert.False(Directory.Exists(Path.Combine(host.Root, copy.Workspace.Folder, "README.md")));
+        Assert.False(Directory.Exists(Path.Combine(host.Root, copy.Workspace.CopyFolder, "README.md")));
     }
 
     [MutagenFact]
@@ -121,10 +121,10 @@ public sealed class MutagenCourierTests
     }
 
     [Fact]
-    public void BetaOf_AnotherHost_IsTheAddressAndThePathUnderItsRoot()
+    public void BetaOf_AnotherHost_IsTheAddressAndTheCopyUnderItsRoot()
     {
         string beta = MutagenCourier.BetaOf(new Host("mini", "dev@mini"), new WorkspaceKey("Sample", "main"));
 
-        Assert.Equal("dev@mini:~/.s3l-build/workspaces/Sample/main", beta);
+        Assert.Equal("dev@mini:~/.s3l-build/workspaces/Sample/main/Sample", beta);
     }
 }

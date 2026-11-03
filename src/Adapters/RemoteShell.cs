@@ -23,13 +23,17 @@ public sealed class RemoteShell(IOptions<BuildOptions> options)
     /// <summary>
     /// The lines every script starts with: the root's programs first on the path, then the places a Mac keeps programs a
     /// person installed — OrbStack's docker, Homebrew — which a non-interactive shell does not look in, the root's SDK and
-    /// packages for dotnet, and dotnet's words in English.
+    /// packages for dotnet, dotnet's words in English, and the Android toolchain under the root where it is: the JDK,
+    /// the SDK with its tools, the newest NDK and Gradle's own folder, named the way gradle and dotnet look for them.
     /// </summary>
     public static string Prelude(Host host) =>
         $"""
         export PATH={Root(host)}/bin:{Root(host)}/dotnet:/usr/local/bin:/opt/homebrew/bin:"$HOME/.orbstack/bin":"$PATH"
         export NUGET_PACKAGES={Under(host, "nuget")} DOTNET_CLI_UI_LANGUAGE=en DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
         [ -d {Under(host, "dotnet")} ] && export DOTNET_ROOT={Under(host, "dotnet")}
+        [ -x {Under(host, "jdk/current/bin/java")} ] && export JAVA_HOME={Under(host, "jdk/current")} PATH={Under(host, "jdk/current/bin")}:"$PATH"
+        [ -x {Under(host, "android/cmdline-tools/latest/bin/sdkmanager")} ] && export ANDROID_HOME={Under(host, "android")} ANDROID_SDK_ROOT={Under(host, "android")} GRADLE_USER_HOME={Under(host, "gradle")} PATH={Under(host, "android/cmdline-tools/latest/bin")}:{Under(host, "android/platform-tools")}:"$PATH"
+        S3L_NDK="$(ls {Under(host, "android/ndk")} 2>/dev/null | sort -V | tail -n 1)"; [ -n "$S3L_NDK" ] && export ANDROID_NDK_HOME={Under(host, "android/ndk")}/"$S3L_NDK"
 
         """;
 

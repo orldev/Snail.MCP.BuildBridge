@@ -52,7 +52,28 @@ public static class Messages
     public const string KeepAwake = "Keep the host awake: sudo pmset -a disablesleep 1, or Snail SleepOf; a sleeping host takes no builds.";
 
     /// <summary>A word that is not a kind of build.</summary>
-    public static string UnknownKind(string word) => $"\"{word}\" is not a kind of build: dotnet, xcode, docker, linux, android or script.";
+    public static string UnknownKind(string word) => $"\"{word}\" is not a kind of build: dotnet, xcode, docker, linux, android, gradle or script.";
+
+    /// <summary>A word that is not a package as sdkmanager names one.</summary>
+    public static string NotAPackage(string word) => $"\"{word}\" is not an Android SDK package as sdkmanager names one, such as platforms;android-37.";
+
+    /// <summary>Packages a host could not put under its root.</summary>
+    public static string SupplyFailed(string name, IEnumerable<string> packages, string reason) => $"{name} could not install {string.Join(' ', packages)}: {reason}";
+
+    /// <summary>What to look at when sdkmanager left a package out: its name as sdkmanager spells it, and the licences, which a person accepts.</summary>
+    public static string SupplyHint(string root) => $"Name a package as sdkmanager --list prints it; a licence not yet accepted is accepted by a person: JAVA_HOME={root}/jdk/current {root}/android/cmdline-tools/latest/bin/sdkmanager --sdk_root={root}/android --licenses";
+
+    /// <summary>A host without the Android toolchain under its root, when a build asked for packages.</summary>
+    public const string ProvisionFirst = "Run build_provision on the host: it puts the JDK and the Android SDK under the root, and names the licences to accept.";
+
+    /// <summary>A gradle run of a copy without the wrapper at its root.</summary>
+    public static string NoGradleWrapper(string path) => $"There is no gradlew at {path}: the gradle kind runs the repository's own wrapper, from its root.";
+
+    /// <summary>What a person does when the host is not Apple Silicon, which is all this server fetches a JDK for.</summary>
+    public const string JdkByHand = "This server fetches the JDK for Apple Silicon only: put a JDK of the version the settings name under the root's jdk/current by hand.";
+
+    /// <summary>What a person does before sdkmanager may install anything: accept Google's licences, which only a person may.</summary>
+    public static string AcceptAndroidLicences(string root) => $"Accept the Android SDK licences on the host, which only a person may: JAVA_HOME={root}/jdk/current {root}/android/cmdline-tools/latest/bin/sdkmanager --sdk_root={root}/android --licenses; then provision again.";
 
     /// <summary>A script run without a script named.</summary>
     public const string NoScriptNamed = "A script run names the script first: its path from the working copy's root, then its arguments.";

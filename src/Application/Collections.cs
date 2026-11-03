@@ -22,7 +22,7 @@ public sealed class Collections(Hosts hosts, ICopies copies, IBuilder builder)
         if (copy.Value is not { } found)
             return Answer.Failed<Collected>(copy.Error!, copy.Hint);
 
-        var ready = await hosts.ReadyAsync(host, null, cancellationToken);
+        var ready = await hosts.ReadyAsync(host, [], cancellationToken);
         if (ready.Value is not { } state)
             return Answer.Failed<Collected>(ready.Error!, ready.Hint);
 

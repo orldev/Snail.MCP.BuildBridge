@@ -70,6 +70,7 @@ public sealed class BuildTools(Hosts hosts, Deliveries deliveries, Provisioning 
         [Description(ToolDescriptions.RunPath)] string path,
         [Description(ToolDescriptions.RunKind)] string kind,
         [Description(ToolDescriptions.RunArguments)] string[] arguments,
+        [Description(ToolDescriptions.RunNeeds)] string[]? needs = null,
         [Description(ToolDescriptions.HostName)] string? host = null,
         [Description(ToolDescriptions.Wait)] int wait = 60,
         CancellationToken cancellationToken = default)
@@ -82,7 +83,7 @@ public sealed class BuildTools(Hosts hosts, Deliveries deliveries, Provisioning 
         if (named.Value is null)
             return ToolResponse.Failure(named.Error!, named.Hint);
 
-        var job = jobs.Start(Runs.ToolWord(known), async (progress, token) => Outcome(await runs.RunAsync(path, known, arguments, host, progress, token)), AnswerJson.Default.JsonObject);
+        var job = jobs.Start(Runs.ToolWord(known), async (progress, token) => Outcome(await runs.RunAsync(path, known, arguments, needs ?? [], host, progress, token)), AnswerJson.Default.JsonObject);
         var report = await job.ForAsync(TimeSpan.FromSeconds(wait), cancellationToken);
 
         return ToolResponse.Job(report);
@@ -149,7 +150,7 @@ public sealed class BuildTools(Hosts hosts, Deliveries deliveries, Provisioning 
         if (wanted.Value is not { } known)
             return ToolResponse.Failure(wanted.Error!, wanted.Hint);
 
-        var ready = await hosts.ReadyAsync(host, null, cancellationToken);
+        var ready = await hosts.ReadyAsync(host, [], cancellationToken);
         if (ready.Value is not { } state)
             return ToolResponse.Failure(ready.Error!, ready.Hint);
 

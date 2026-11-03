@@ -35,8 +35,8 @@ public sealed class Hosts(IOptions<BuildOptions> options, IBuilder builder)
         return await Task.WhenAll(probes);
     }
 
-    /// <summary>The host a call means, probed and able to take a build of <paramref name="needs"/>; or why it cannot.</summary>
-    public async Task<Answer<HostState>> ReadyAsync(string? name, Capability? needs, CancellationToken cancellationToken)
+    /// <summary>The host a call means, probed and able to take a build with any one of <paramref name="needs"/>; or why it cannot.</summary>
+    public async Task<Answer<HostState>> ReadyAsync(string? name, IReadOnlyList<Capability> needs, CancellationToken cancellationToken)
     {
         var named = Named(name);
         if (named.Value is not { } host)
@@ -45,8 +45,8 @@ public sealed class Hosts(IOptions<BuildOptions> options, IBuilder builder)
         var state = await builder.ProbeAsync(host, cancellationToken);
         if (!state.IsReachable)
             return Answer.Failed<HostState>(state.Note ?? Messages.HostDown(host.Name, host.Address, "no answer"), Messages.HostDownHint);
-        if (needs is { } capability && !state.Has(capability))
-            return Answer.Failed<HostState>(Messages.HostCannot(host.Name, capability.ToString().ToLowerInvariant()));
+        if (needs.Count > 0 && !needs.Any(state.Has))
+            return Answer.Failed<HostState>(Messages.HostCannot(host.Name, string.Join(" or ", needs.Select(capability => capability.ToString().ToLowerInvariant()))));
 
         return Answer.Ok(state);
     }

@@ -38,7 +38,7 @@ public sealed class MutagenCourier(IPrograms programs, ICopies copies, RsyncCour
             return await rsync.DeliverAsync(host, copy, true, cancellationToken);
 
         var key = copy.Workspace;
-        var words = shell.Command(host, RemoteShell.Prelude(host) + $"mkdir -p {RemoteShell.Under(host, key.Folder)}");
+        var words = shell.Command(host, RemoteShell.Prelude(host) + $"mkdir -p {RemoteShell.Under(host, key.CopyFolder)}");
         var made = await programs.RunAsync(words[0], words[1..], null, TimeSpan.FromSeconds(options.Value.ProbeSeconds), cancellationToken);
         if (!made.IsSuccess)
             return Answer.Failed<Delivery>(Messages.DeliveryFailed(host.Name, Rsync.Reason(made)));
@@ -100,9 +100,9 @@ public sealed class MutagenCourier(IPrograms programs, ICopies copies, RsyncCour
         return Convert.ToHexStringLower(hash)[..16];
     }
 
-    /// <summary>The workspace as Mutagen names it: a path on this machine, or <c>address:path</c> on another.</summary>
+    /// <summary>The copy in the workspace as Mutagen names it: a path on this machine, or <c>address:path</c> on another.</summary>
     public static string BetaOf(Host host, WorkspaceKey key) =>
-        host.IsLocal ? Path.Combine(RemoteShell.LocalRoot(host), key.Folder) : $"{host.Address}:{host.Root}/{key.Folder}";
+        host.IsLocal ? Path.Combine(RemoteShell.LocalRoot(host), key.CopyFolder) : $"{host.Address}:{host.Root}/{key.CopyFolder}";
 
     private async Task<(bool IsMissing, string? Shape)> SessionAsync(string session, CancellationToken cancellationToken)
     {

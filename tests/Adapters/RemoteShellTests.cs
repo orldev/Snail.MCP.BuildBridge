@@ -42,4 +42,16 @@ public sealed class RemoteShellTests
 
         Assert.Contains("export PATH=\"$HOME/.s3l-build\"/bin:\"$HOME/.s3l-build\"/dotnet:/usr/local/bin:/opt/homebrew/bin:\"$HOME/.orbstack/bin\":\"$PATH\"", prelude, StringComparison.Ordinal);
     }
+
+    /// <summary>The toolchain under the root is named the way gradle and dotnet look for it, only where it is.</summary>
+    [Fact]
+    public void Prelude_AnyHost_NamesTheAndroidToolchainUnderTheRootWhereItIs()
+    {
+        var prelude = RemoteShell.Prelude(new Host("mini", "dev@mini"));
+
+        Assert.Contains("[ -x \"$HOME/.s3l-build/jdk/current/bin/java\" ] && export JAVA_HOME=\"$HOME/.s3l-build/jdk/current\"", prelude, StringComparison.Ordinal);
+        Assert.Contains("export ANDROID_HOME=\"$HOME/.s3l-build/android\"", prelude, StringComparison.Ordinal);
+        Assert.Contains("GRADLE_USER_HOME=\"$HOME/.s3l-build/gradle\"", prelude, StringComparison.Ordinal);
+        Assert.Contains("export ANDROID_NDK_HOME=\"$HOME/.s3l-build/android/ndk\"/\"$S3L_NDK\"", prelude, StringComparison.Ordinal);
+    }
 }

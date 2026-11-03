@@ -18,7 +18,7 @@ public sealed class RsyncCourier(IPrograms programs, ICopies copies, RemoteShell
     public async Task<Answer<Delivery>> DeliverAsync(Host host, LocalCopy copy, bool isDryRun, CancellationToken cancellationToken)
     {
         var key = copy.Workspace;
-        var words = shell.Command(host, RemoteShell.Prelude(host) + $"mkdir -p {RemoteShell.Under(host, key.Folder)}");
+        var words = shell.Command(host, RemoteShell.Prelude(host) + $"mkdir -p {RemoteShell.Under(host, key.CopyFolder)}");
         var made = await programs.RunAsync(words[0], words[1..], null, TimeSpan.FromSeconds(options.Value.ProbeSeconds), cancellationToken);
         if (!made.IsSuccess)
             return Answer.Failed<Delivery>(Messages.DeliveryFailed(host.Name, Rsync.Reason(made)));
@@ -28,7 +28,7 @@ public sealed class RsyncCourier(IPrograms programs, ICopies copies, RemoteShell
         string excludes = string.Join('\n', Excludes(copy, [.. ignoredHere, .. ignoredThere]).Distinct(StringComparer.Ordinal)) + '\n';
         var started = clock.GetTimestamp();
 
-        var arguments = Rsync.Arguments(options.Value, host, isDryRun, true, $"{copy.Path}/", $"{RemoteShell.Rsync(host, key.Folder)}/");
+        var arguments = Rsync.Arguments(options.Value, host, isDryRun, true, $"{copy.Path}/", $"{RemoteShell.Rsync(host, key.CopyFolder)}/");
         var run = await programs.RunAsync(options.Value.Rsync, arguments, null, TimeSpan.FromSeconds(options.Value.TransferSeconds), cancellationToken, excludes);
         if (run.IsMissing)
             return Answer.Failed<Delivery>(Messages.ProgramMissing(options.Value.Rsync));
@@ -46,7 +46,7 @@ public sealed class RsyncCourier(IPrograms programs, ICopies copies, RemoteShell
     /// <remarks>Proven by a chaos test on 2026-11-03: a folder the host made under an ignored path absent on this machine was gone after the next delivery.</remarks>
     private async Task<IReadOnlyList<string>> IgnoredOnHostAsync(Host host, WorkspaceKey key, CancellationToken cancellationToken)
     {
-        string script = $"cd {RemoteShell.Under(host, key.Folder)} 2>/dev/null && git ls-files --others --ignored --exclude-standard --directory -z 2>/dev/null";
+        string script = $"cd {RemoteShell.Under(host, key.CopyFolder)} 2>/dev/null && git ls-files --others --ignored --exclude-standard --directory -z 2>/dev/null";
         var words = shell.Command(host, RemoteShell.Prelude(host) + script);
         var run = await programs.RunAsync(words[0], words[1..], null, TimeSpan.FromSeconds(options.Value.ProbeSeconds), cancellationToken);
         if (!run.IsSuccess)

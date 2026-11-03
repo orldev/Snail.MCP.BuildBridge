@@ -5,8 +5,17 @@ namespace Snail.MCP.BuildBridge.Domain;
 /// <param name="Branch">The branch, as the local copy had it.</param>
 public readonly record struct WorkspaceKey(string Repository, string Branch)
 {
-    /// <summary>The folder under a host's root: <c>workspaces/&lt;repository&gt;/&lt;branch&gt;</c>, with the characters either may carry that a folder, a shell or rsync may not replaced.</summary>
+    /// <summary>The folder under a host's root: <c>workspaces/&lt;repository&gt;/&lt;branch&gt;</c>, with the characters either may carry that a folder, a shell or rsync may not replaced; it holds the copy, the marker and the pid file of a run.</summary>
     public string Folder => $"workspaces/{Safe(Repository)}/{Safe(Branch)}";
+
+    /// <summary>The copy inside the workspace, where a command runs: <c>workspaces/&lt;repository&gt;/&lt;branch&gt;/&lt;repository&gt;</c>, a folder named as the repository is.</summary>
+    /// <remarks>
+    /// A tool that reads a name from the root folder — git, and Snail.Sdk's conformance, which names a server after its
+    /// folder (S3LC0021) — sees the repository's name there, as it does on this machine, where a copy at the branch
+    /// folder was named after the branch. The marker and the pid file stay beside the copy, out of the mirror's way:
+    /// inside it, a delivery that deletes what the copy lacks took them with it.
+    /// </remarks>
+    public string CopyFolder => $"{Folder}/{Safe(Repository)}";
 
     /// <summary>A branch as a folder name: every slash and character a path cannot carry becomes a dash.</summary>
     public static string Safe(string branch)

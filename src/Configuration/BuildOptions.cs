@@ -81,8 +81,26 @@ public sealed class BuildOptions
     /// <summary>The SHA-256 of that release's zip, checked before it is unpacked; empty checks nothing.</summary>
     public string XcodeGenSha256 { get; set; } = BuilderManifest.DefaultXcodeGenSha256;
 
-    /// <summary>The images provisioning builds on a host for the kinds that run in a container: dotnet for linux, android for android.</summary>
-    public string[] Images { get; set; } = [BuildImage.Dotnet, BuildImage.Android];
+    /// <summary>The images provisioning builds on a host for the kinds that run in a container: dotnet for linux; android for an Android build on a host without the toolchain, not built unless named.</summary>
+    public string[] Images { get; set; } = [BuildImage.Dotnet];
+
+    /// <summary>Whether provisioning puts a JDK and the Android SDK with its NDK under the root, for the gradle kind and for an Android build on the host itself.</summary>
+    public bool HasAndroid { get; set; } = true;
+
+    /// <summary>The Temurin release provisioning fetches from Adoptium, as it names it: 21.0.13+9.</summary>
+    public string JdkVersion { get; set; } = BuilderManifest.DefaultJdkVersion;
+
+    /// <summary>The SHA-256 of that release's macOS arm64 tarball, checked before it is unpacked; empty checks nothing.</summary>
+    public string JdkSha256 { get; set; } = BuilderManifest.DefaultJdkSha256;
+
+    /// <summary>The build of the Android command-line tools provisioning fetches from Google, as the file is named: 11076708.</summary>
+    public string AndroidToolsBuild { get; set; } = BuilderManifest.DefaultAndroidToolsBuild;
+
+    /// <summary>The SHA-256 of that build's macOS zip, checked before it is unpacked; empty checks nothing.</summary>
+    public string AndroidToolsSha256 { get; set; } = BuilderManifest.DefaultAndroidToolsSha256;
+
+    /// <summary>The SDK packages sdkmanager installs, as it names them: platform-tools, platforms;android-36, build-tools;36.0.0, ndk;28.2.13676358.</summary>
+    public string[] AndroidPackages { get; set; } = [.. BuilderManifest.DefaultAndroidPackages];
 
     /// <summary>Days a workspace may go without a build before a sweep removes it.</summary>
     public int WorkspaceDays { get; set; } = 14;
@@ -103,11 +121,24 @@ public sealed class BuildOptions
     public IReadOnlyList<Host> ToHosts() => [.. Hosts.Select(host => host.ToHost())];
 
     /// <summary>What a host is provisioned with, as the domain carries it.</summary>
-    public BuilderManifest ToManifest() => new(SdkVersion, Workloads, [.. Feeds.Select(feed => feed.Name)], Images, HasXcodeGen, XcodeGenVersion, XcodeGenSha256);
+    public BuilderManifest ToManifest() => new(SdkVersion, Workloads, [.. Feeds.Select(feed => feed.Name)], Images, HasXcodeGen, XcodeGenVersion, XcodeGenSha256)
+    {
+        HasAndroid = HasAndroid,
+        JdkVersion = JdkVersion,
+        JdkSha256 = JdkSha256,
+        AndroidToolsBuild = AndroidToolsBuild,
+        AndroidToolsSha256 = AndroidToolsSha256,
+        AndroidPackages = AndroidPackages
+    };
 
     /// <summary>Whether the sync setting names a means this server knows.</summary>
     public bool HasKnownSync => Sync is Delivery.Rsync or Delivery.Mutagen;
 
     /// <summary>The sweep's ages as the domain carries them.</summary>
-    public SweepRules ToSweepRules() => new(WorkspaceDays, JobDays, ImageDays, BuildCacheHours, LowDiskGigabytes);
+    public SweepRules ToSweepRules() => new(WorkspaceDays, JobDays, ImageDays, BuildCacheHours, LowDiskGigabytes)
+    {
+        KeptSdk = SdkVersion,
+        KeptPackages = AndroidPackages,
+        KeptImages = [.. Images.Select(image => BuildImage.TagOf(image, SdkVersion))]
+    };
 }

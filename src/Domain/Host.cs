@@ -26,7 +26,10 @@ public enum Capability
     Xcode,
 
     /// <summary>A Docker engine: images and compose stands.</summary>
-    Docker
+    Docker,
+
+    /// <summary>The Android toolchain under the root — a JDK and the Android SDK with its NDK: gradle, and dotnet's Android targets on the host itself.</summary>
+    Android
 }
 
 /// <summary>One toolchain as a probe found it: present with its version, or absent.</summary>
@@ -45,6 +48,9 @@ public sealed record Toolchain(Capability Capability, string? Version)
 /// <param name="Home">The home folder of the account on the host, which a container run needs to name the root to docker; null when the probe did not say.</param>
 public sealed record HostState(Host Host, bool IsReachable, IReadOnlyList<Toolchain> Toolchains, double? FreeGigabytes, string? Note, string? Home = null)
 {
+    /// <summary>The .NET SDKs under the root, by version, so a run knows whether its copy's wish is met before it starts.</summary>
+    public IReadOnlyList<string> Sdks { get; init; } = [];
+
     /// <summary>Whether the host builds with <paramref name="capability"/>.</summary>
     public bool Has(Capability capability) => Toolchains.Any(toolchain => toolchain.Capability == capability && toolchain.IsPresent);
 

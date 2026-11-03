@@ -35,7 +35,10 @@ public sealed class BuildSettingsTests
         BuildSettings.Read(null, new Hashtable()).Bind(options);
 
         Assert.Empty(options.ToHosts());
-        Assert.Equal(new SweepRules(), options.ToSweepRules());
+        var rules = options.ToSweepRules();
+        Assert.Equal(new SweepRules(), rules with { KeptSdk = string.Empty, KeptPackages = new SweepRules().KeptPackages, KeptImages = new SweepRules().KeptImages });
+        Assert.Equal("10.0.302", rules.KeptSdk);
+        Assert.Equal(["s3l-build-dotnet:10.0.302"], rules.KeptImages);
         Assert.Contains("obj", options.Excludes);
     }
 }

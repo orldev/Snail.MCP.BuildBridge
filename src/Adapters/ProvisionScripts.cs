@@ -6,7 +6,8 @@ namespace Snail.MCP.BuildBridge.Adapters;
 /// <summary>What provisioning runs on a host and how its answer is read: the script of the root, the SDK, the workloads, the feeds, the images and the tools, and the steps it reports.</summary>
 public static class ProvisionScripts
 {
-    /// <summary>The script that provisions a host: the folders, the SDK, the workloads, the feeds, and a look at Xcode, Docker and sleep.</summary>
+    /// <summary>The script that provisions a host: the folders, the SDK, the workloads, the feeds, XcodeGen, the Android toolchain, the images, and a look at Xcode, Docker, Rosetta and sleep.</summary>
+    /// <remarks>A second SDK goes beside the first with the host's unversioned files left alone: overwriting the dotnet muxer in place leaves macOS killing it, which the supply of an SDK during a run found on 2026-11-03.</remarks>
     public static string Of(Host host, BuilderManifest manifest)
     {
         string root = RemoteShell.Root(host);
@@ -15,6 +16,7 @@ public static class ProvisionScripts
         string workloads = RemoteShell.Quoted(string.Join(' ', manifest.Workloads));
         string feeds = RemoteShell.Quoted(string.Join(' ', manifest.Feeds));
         string images = string.Concat(manifest.Images.Select(image => ImageScript(image, manifest.SdkVersion)));
+        string android = manifest.HasAndroid ? AndroidScript(manifest) : string.Empty;
 
         return $$$"""
             ROOT={{{root}}}
@@ -23,7 +25,8 @@ public static class ProvisionScripts
             if [ -n "$SDK" ]; then
               have="$("$ROOT/dotnet/dotnet" --version 2>/dev/null)"
               if [ "$have" != "$SDK" ]; then
-                curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$ROOT/bin/dotnet-install.sh" && bash "$ROOT/bin/dotnet-install.sh" --version "$SDK" --install-dir "$ROOT/dotnet" --no-path
+                skip=""; [ -x "$ROOT/dotnet/dotnet" ] && skip=--skip-non-versioned-files
+                curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$ROOT/bin/dotnet-install.sh" && bash "$ROOT/bin/dotnet-install.sh" --version "$SDK" --install-dir "$ROOT/dotnet" --no-path $skip
                 have="$("$ROOT/dotnet/dotnet" --version 2>/dev/null)"
               fi
               if [ "$have" = "$SDK" ]; then echo "s3l-step dotnet 1 $have in $ROOT/dotnet"; else echo "s3l-step dotnet 0 dotnet-install.sh did not leave $SDK in $ROOT/dotnet"; fi
@@ -73,12 +76,73 @@ public static class ProvisionScripts
             if [ "$(uname -m)" = arm64 ]; then
               if arch -x86_64 /usr/bin/true >/dev/null 2>&1; then echo "s3l-step rosetta 1 x64 programs run"; else echo "s3l-step rosetta 0 {{{Messages.InstallRosetta}}}"; fi
             fi
+            {{{android}}}
             cat > "$ROOT/{{{ContainerCommand.NuGetConfig}}}" <<'S3L_NUGET'
             {{{ContainerNuGetConfig(manifest.Feeds)}}}
             S3L_NUGET
             {{{images}}}
             """;
     }
+
+    /// <summary>The lines that put the Android toolchain under the root: the JDK from its tarball into jdk, pointed at by jdk/current; the command-line tools from their zip into android; then the packages the manifest names through sdkmanager, once a person has accepted the licences.</summary>
+    /// <remarks>
+    /// Each archive is checked against the SHA-256 the manifest names before it is unpacked, and sdkmanager checks what it
+    /// fetches itself. The JDK is fetched for Apple Silicon only, which every host of this server is; another host is
+    /// told to put one in place by hand. Accepting Google's licences is a person's, as Rosetta's and Xcode's are, so the
+    /// step stops there with the command and reports the packages installed once the licences are.
+    /// </remarks>
+    public static string AndroidScript(BuilderManifest manifest) =>
+        $$$"""
+        JDK={{{RemoteShell.Quoted(manifest.JdkVersion)}}}
+        JDK_SHA={{{RemoteShell.Quoted(manifest.JdkSha256)}}}
+        JDK_WANT="${JDK%%+*}"
+        have="$("$ROOT/jdk/current/bin/java" -version 2>&1 | head -n 1 | sed 's/.*"\(.*\)".*/\1/')"
+        reason="JDK $JDK did not install under $ROOT/jdk; the log says why"
+        if [ "$have" != "$JDK_WANT" ] && [ "$(uname -m)" != arm64 ]; then reason="{{{Messages.JdkByHand}}}"
+        elif [ "$have" != "$JDK_WANT" ]; then
+          rm -rf "$ROOT/jdk"; mkdir -p "$ROOT/jdk"
+          if curl -fsSL {{{RemoteShell.Quoted(BuilderManifests.JdkUrlOf(manifest.JdkVersion))}}} -o "$ROOT/jdk/jdk.tar.gz"; then
+            if [ -z "$JDK_SHA" ] || echo "$JDK_SHA  $ROOT/jdk/jdk.tar.gz" | shasum -a 256 -c - >/dev/null 2>&1; then
+              tar -xzf "$ROOT/jdk/jdk.tar.gz" -C "$ROOT/jdk"
+              home="$(find "$ROOT/jdk" -type d -path '*/Contents/Home' | head -n 1)"
+              [ -n "$home" ] && ln -sfn "$home" "$ROOT/jdk/current"
+            else echo "jdk.tar.gz does not match the SHA-256 the settings name"; fi
+            rm -f "$ROOT/jdk/jdk.tar.gz"
+          fi
+          have="$("$ROOT/jdk/current/bin/java" -version 2>&1 | head -n 1 | sed 's/.*"\(.*\)".*/\1/')"
+        fi
+        if [ "$have" = "$JDK_WANT" ]; then echo "s3l-step jdk 1 JDK $have in $ROOT/jdk"; else echo "s3l-step jdk 0 $reason"; fi
+        TOOLS={{{RemoteShell.Quoted(manifest.AndroidToolsBuild)}}}
+        TOOLS_SHA={{{RemoteShell.Quoted(manifest.AndroidToolsSha256)}}}
+        PACKAGES={{{RemoteShell.Quoted(string.Join(' ', manifest.AndroidPackages))}}}
+        SDKMANAGER="$ROOT/android/cmdline-tools/latest/bin/sdkmanager"
+        export JAVA_HOME="$ROOT/jdk/current" ANDROID_HOME="$ROOT/android"
+        if [ "$have" != "$JDK_WANT" ]; then echo "s3l-step android 0 no JDK under $ROOT/jdk, which sdkmanager runs on"
+        else
+          if [ ! -x "$SDKMANAGER" ]; then
+            mkdir -p "$ROOT/android/cmdline-tools"
+            if curl -fsSL {{{RemoteShell.Quoted(BuilderManifests.AndroidToolsUrlOf(manifest.AndroidToolsBuild))}}} -o "$ROOT/android/tools.zip"; then
+              if [ -z "$TOOLS_SHA" ] || echo "$TOOLS_SHA  $ROOT/android/tools.zip" | shasum -a 256 -c - >/dev/null 2>&1; then
+                rm -rf "$ROOT/android/cmdline-tools/latest" "$ROOT/android/cmdline-tools/cmdline-tools"
+                unzip -qo "$ROOT/android/tools.zip" -d "$ROOT/android/cmdline-tools" && mv "$ROOT/android/cmdline-tools/cmdline-tools" "$ROOT/android/cmdline-tools/latest"
+              else echo "the command-line tools zip does not match the SHA-256 the settings name"; fi
+              rm -f "$ROOT/android/tools.zip"
+            fi
+          fi
+          if [ ! -x "$SDKMANAGER" ]; then echo "s3l-step android 0 the Android command-line tools $TOOLS did not unpack under $ROOT/android; the log says why"
+          elif [ ! -d "$ROOT/android/licenses" ]; then echo "s3l-step android 0 {{{Messages.AcceptAndroidLicences("$ROOT")}}}"
+          else
+            installed="$("$SDKMANAGER" --sdk_root="$ROOT/android" --list_installed 2>/dev/null)"
+            missing=""
+            for package in $PACKAGES; do printf '%s\n' "$installed" | grep -q "^ *$package " || missing="$missing $package"; done
+            if [ -n "$missing" ]; then "$SDKMANAGER" --sdk_root="$ROOT/android" $missing </dev/null; fi
+            installed="$("$SDKMANAGER" --sdk_root="$ROOT/android" --list_installed 2>/dev/null)"
+            missing=""
+            for package in $PACKAGES; do printf '%s\n' "$installed" | grep -q "^ *$package " || missing="$missing $package"; done
+            if [ -z "$missing" ]; then echo "s3l-step android 1 $PACKAGES in $ROOT/android"; else echo "s3l-step android 0 not installed:$missing; the log says why"; fi
+          fi
+        fi
+        """;
 
     /// <summary>The lines that build one image: its Dockerfile written under the root, then docker build unless the tag is there already from this very Dockerfile.</summary>
     /// <remarks>

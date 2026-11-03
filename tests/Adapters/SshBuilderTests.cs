@@ -49,7 +49,7 @@ public sealed class SshBuilderTests
         Assert.True(delivery.IsDryRun);
         Assert.Contains("README.md", delivery.Files);
         Assert.DoesNotContain(delivery.Files, file => file.Contains("bin", StringComparison.Ordinal));
-        Assert.False(File.Exists(Path.Combine(host.Root, copy.Workspace.Folder, "README.md")));
+        Assert.False(File.Exists(Path.Combine(host.Root, copy.Workspace.CopyFolder, "README.md")));
     }
 
     [Fact]
@@ -62,11 +62,12 @@ public sealed class SshBuilderTests
 
         Assert.Null(answer.Error);
         string workspace = Path.Combine(host.Root, "workspaces", "Sample", "main");
-        Assert.True(File.Exists(Path.Combine(workspace, "README.md")));
-        Assert.True(File.Exists(Path.Combine(workspace, "notes.txt")));
-        Assert.True(Directory.Exists(Path.Combine(workspace, ".git")));
-        Assert.False(Directory.Exists(Path.Combine(workspace, "secrets")));
-        Assert.False(Directory.Exists(Path.Combine(workspace, "src", "bin")));
+        string inside = Path.Combine(workspace, "Sample");
+        Assert.True(File.Exists(Path.Combine(inside, "README.md")));
+        Assert.True(File.Exists(Path.Combine(inside, "notes.txt")));
+        Assert.True(Directory.Exists(Path.Combine(inside, ".git")));
+        Assert.False(Directory.Exists(Path.Combine(inside, "secrets")));
+        Assert.False(Directory.Exists(Path.Combine(inside, "src", "bin")));
         Assert.Contains("\"Repository\": \"Sample\"", await File.ReadAllTextAsync(Path.Combine(workspace, WorkspaceMarker.FileName)), StringComparison.Ordinal);
     }
 
@@ -79,7 +80,7 @@ public sealed class SshBuilderTests
         var copy = await CopyAsync(repository);
         var builder = Builder();
         await builder.DeliverAsync(host, copy, false, CancellationToken.None);
-        string workspace = Path.Combine(host.Root, copy.Workspace.Folder);
+        string workspace = Path.Combine(host.Root, copy.Workspace.CopyFolder);
         Directory.CreateDirectory(Path.Combine(workspace, "src", "bin"));
         await File.WriteAllTextAsync(Path.Combine(workspace, "src", "bin", "built.dll"), "kept");
         File.Delete(Path.Combine(repository, "notes.txt"));
@@ -102,7 +103,7 @@ public sealed class SshBuilderTests
 
         await Builder().DeliverAsync(host, copy, false, CancellationToken.None);
 
-        string workspace = Path.Combine(host.Root, copy.Workspace.Folder);
+        string workspace = Path.Combine(host.Root, copy.Workspace.CopyFolder);
         Assert.True(File.Exists(Path.Combine(workspace, "README.md")));
         Assert.False(File.Exists(Path.Combine(workspace, ".git")));
     }
@@ -121,7 +122,7 @@ public sealed class SshBuilderTests
         var execution = Assert.IsType<Execution>(answer.Value);
         Assert.Equal(4, execution.ExitCode);
         string written = await File.ReadAllTextAsync(log);
-        Assert.Contains(copy.Workspace.Folder, written, StringComparison.Ordinal);
+        Assert.Contains(copy.Workspace.CopyFolder, written, StringComparison.Ordinal);
         Assert.Contains("# Sample", written, StringComparison.Ordinal);
         Assert.Contains("oops", written, StringComparison.Ordinal);
         Assert.True(File.Exists(Path.Combine(host.Root, copy.Workspace.Folder, WorkspaceMarker.BuiltFileName)));
@@ -289,6 +290,44 @@ public sealed class SshBuilderTests
         Assert.Equal(5.931, survey.BuildCacheGigabytes, 3);
         Assert.Equal(1.0, survey.PackagesGigabytes, 3);
         Assert.Equal(612, survey.FreeGigabytes);
+    }
+
+    [Fact]
+    public void SurveyOf_LinesOfVersions_AreTheSdksTheWishesTheToolsAndTheImages()
+    {
+        const string output = """
+            s3l-sdk 10.0.302
+            s3l-sdk 10.0.100
+            s3l-sdkwanted 10.0.302
+            s3l-sdkwanted
+            s3l-buildtools 36.0.0
+            s3l-ndk 28.2.13676358
+            s3l-toolimage s3l-build-dotnet:10.0.302
+            s3l-free 612
+            """;
+
+        var survey = Surveys.Of(new Host("mini", "mini"), output);
+
+        Assert.Equal(["10.0.302", "10.0.100"], survey.Sdks);
+        Assert.Equal(["10.0.302"], survey.SdksWanted);
+        Assert.Equal(["36.0.0"], survey.BuildTools);
+        Assert.Equal(["28.2.13676358"], survey.Ndks);
+        Assert.Equal(["s3l-build-dotnet:10.0.302"], survey.ToolImages);
+    }
+
+    [Fact]
+    public async Task CarryOutAsync_AnSdkUnderTheRoot_IsRemovedByVersion()
+    {
+        var host = LocalHost();
+        string sdk = Path.Combine(host.Root, "dotnet", "sdk", "9.0.100");
+        Directory.CreateDirectory(sdk);
+
+        var removed = await Builder().CarryOutAsync(host, new SweepItem(SweepKind.Sdk, "9.0.100", null, "test"), CancellationToken.None);
+        var refused = await Builder().CarryOutAsync(host, new SweepItem(SweepKind.Sdk, "../../workspaces", null, "test"), CancellationToken.None);
+
+        Assert.True(removed.Value);
+        Assert.False(Directory.Exists(sdk));
+        Assert.False(refused.Value);
     }
 
     [SimulatorFact]

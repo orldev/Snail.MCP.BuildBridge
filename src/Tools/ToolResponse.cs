@@ -49,6 +49,7 @@ public static class ToolResponse
         ["root"] = state.Host.Root,
         ["reachable"] = state.IsReachable,
         ["toolchains"] = new JsonObject([.. state.Toolchains.Select(toolchain => KeyValuePair.Create(Word(toolchain.Capability), (JsonNode?)toolchain.Version))]),
+        ["sdks"] = new JsonArray([.. state.Sdks.Select(sdk => JsonValue.Create(sdk))]),
         ["freeGigabytes"] = state.FreeGigabytes,
         ["note"] = state.Note
     };
@@ -58,7 +59,7 @@ public static class ToolResponse
     {
         ["repository"] = delivery.Key.Repository,
         ["branch"] = delivery.Key.Branch,
-        ["workspace"] = delivery.Key.Folder,
+        ["workspace"] = delivery.Key.CopyFolder,
         ["dryRun"] = delivery.IsDryRun,
         ["means"] = delivery.Means,
         ["files"] = new JsonArray([.. delivery.Files.Select(file => JsonValue.Create(file))]),
@@ -83,13 +84,14 @@ public static class ToolResponse
         ["host"] = report.Host.Name,
         ["kind"] = Word(report.Kind),
         ["command"] = string.Join(' ', report.Command),
-        ["workspace"] = report.Delivery.Key.Folder,
+        ["workspace"] = report.Delivery.Key.CopyFolder,
         ["delivered"] = new JsonObject { ["files"] = report.Delivery.Files.Count, ["bytes"] = report.Delivery.Bytes, ["seconds"] = Math.Round(report.Delivery.Took.TotalSeconds, 1) },
         ["exitCode"] = report.Execution.ExitCode,
         ["timedOut"] = report.Execution.IsTimedOut,
         ["seconds"] = Math.Round(report.Execution.Took.TotalSeconds, 1),
         ["tests"] = report.Tests is { } tests ? new JsonObject { ["passed"] = tests.Passed, ["failed"] = tests.Failed, ["skipped"] = tests.Skipped, ["total"] = tests.Total } : null,
         ["log"] = report.Execution.Log,
+        ["supplied"] = new JsonArray([.. report.Supplied.Select(package => JsonValue.Create(package))]),
         ["swept"] = new JsonArray([.. report.Swept.Select(Data)])
     };
 

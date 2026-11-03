@@ -48,4 +48,7 @@ public sealed record BuildReport(Host Host, BuildKind Kind, IReadOnlyList<string
 {
     /// <summary>Whether the command ended as it meant to and no test failed.</summary>
     public bool IsSuccess => Execution.IsSuccess && Tests is not { Failed: > 0 };
+
+    /// <summary>The Android SDK packages put under the root for this run: those the call named, and the platform a failed build named before it ran again.</summary>
+    public IReadOnlyList<string> Supplied { get; init; } = [];
 }

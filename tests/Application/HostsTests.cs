@@ -50,7 +50,7 @@ public sealed class HostsTests
     [Fact]
     public async Task ReadyAsync_HostDown_SaysSoWithHowToReachIt()
     {
-        var answer = await Of(new FakeBuilder(), Mini).ReadyAsync(null, null, CancellationToken.None);
+        var answer = await Of(new FakeBuilder(), Mini).ReadyAsync(null, [], CancellationToken.None);
 
         Assert.Null(answer.Value);
         Assert.Contains("mini is down", answer.Error, StringComparison.Ordinal);
@@ -63,12 +63,27 @@ public sealed class HostsTests
         var builder = new FakeBuilder();
         builder.Up[Mini.Name] = new HostState(Mini, true, [new Toolchain(Capability.Dotnet, "10.0.302"), new Toolchain(Capability.Xcode, null)], 400, null);
 
-        var dotnet = await Of(builder, Mini).ReadyAsync("mini", Capability.Dotnet, CancellationToken.None);
-        var xcode = await Of(builder, Mini).ReadyAsync("mini", Capability.Xcode, CancellationToken.None);
+        var dotnet = await Of(builder, Mini).ReadyAsync("mini", [Capability.Dotnet], CancellationToken.None);
+        var xcode = await Of(builder, Mini).ReadyAsync("mini", [Capability.Xcode], CancellationToken.None);
 
         Assert.NotNull(dotnet.Value);
         Assert.Null(xcode.Value);
         Assert.Contains("no xcode", xcode.Error, StringComparison.Ordinal);
+    }
+
+    /// <summary>An Android build takes the toolchain under the root or docker: a host with either takes it, one with neither is told of both.</summary>
+    [Fact]
+    public async Task ReadyAsync_KindWithAlternatives_TakesAHostWithAnyOfThemAndNamesBothWhenNone()
+    {
+        var builder = new FakeBuilder();
+        builder.Up[Mini.Name] = new HostState(Mini, true, [new Toolchain(Capability.Docker, "29.0"), new Toolchain(Capability.Android, null)], 400, null);
+
+        var withDocker = await Of(builder, Mini).ReadyAsync("mini", [Capability.Android, Capability.Docker], CancellationToken.None);
+        var withNeither = await Of(builder, Mini).ReadyAsync("mini", [Capability.Android, Capability.Xcode], CancellationToken.None);
+
+        Assert.NotNull(withDocker.Value);
+        Assert.Null(withNeither.Value);
+        Assert.Contains("no android or xcode", withNeither.Error, StringComparison.Ordinal);
     }
 
     [Fact]

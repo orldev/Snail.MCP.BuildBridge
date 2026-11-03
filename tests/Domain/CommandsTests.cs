@@ -9,7 +9,7 @@ public sealed class CommandsTests
     {
         var shaped = XcodeCommand.Shaped(["build", "-scheme", "App"], Key);
 
-        Assert.Equal(["build", "-scheme", "App", "-derivedDataPath", "../../../derived/Anonym-feat-web-3.0"], shaped);
+        Assert.Equal(["build", "-scheme", "App", "-derivedDataPath", "../../../../derived/Anonym-feat-web-3.0"], shaped);
     }
 
     [Fact]
@@ -25,18 +25,29 @@ public sealed class CommandsTests
     [InlineData("platform=iOS Simulator,id=ABCD", null)]
     [InlineData("platform=macOS", null)]
     [InlineData("generic/platform=iOS", null)]
-    public void SimulatorNamed_ByDestination_IsTheNameOfASimulatorOnly(string destination, string? expected) =>
-        Assert.Equal(expected, XcodeCommand.SimulatorNamed(["test", "-destination", destination]));
+    public void SimulatorsNamed_ByDestination_IsTheNameOfASimulatorOnly(string destination, string? expected) =>
+        Assert.Equal(expected is null ? [] : [expected], XcodeCommand.SimulatorsNamed(["test", "-destination", destination]));
 
     [Fact]
-    public void SimulatorNamed_NoDestination_IsNull() => Assert.Null(XcodeCommand.SimulatorNamed(["build"]));
+    public void SimulatorsNamed_NoDestination_IsNone() => Assert.Empty(XcodeCommand.SimulatorsNamed(["build"]));
 
+    /// <summary>Two destinations by name are two simulators to clone, in their order; one by id stays as it is between them.</summary>
     [Fact]
-    public void OnDevice_DestinationByName_PointsAtTheIdAndDropsNameAndOs()
+    public void SimulatorsNamed_SeveralDestinations_AreEachInOrder()
     {
-        var pointed = XcodeCommand.OnDevice(["test", "-destination", "platform=iOS Simulator,name=iPhone 17,OS=27.1", "-scheme", "App"], "UDID-9");
+        string[] arguments = ["test", "-destination", "platform=iOS Simulator,name=iPhone 17 Pro", "-destination", "platform=iOS Simulator,id=ABCD", "-destination", "platform=iOS Simulator,name=iPad 11-inch (A16),OS=27.1"];
 
-        Assert.Equal(["test", "-destination", "platform=iOS Simulator,id=UDID-9", "-scheme", "App"], pointed);
+        Assert.Equal(["iPhone 17 Pro", "iPad 11-inch (A16)"], XcodeCommand.SimulatorsNamed(arguments));
+    }
+
+    [Fact]
+    public void OnDevices_DestinationsByName_PointEachAtItsIdAndDropNameAndOs()
+    {
+        string[] arguments = ["test", "-destination", "platform=iOS Simulator,name=iPhone 17,OS=27.1", "-destination", "platform=iOS Simulator,id=ABCD", "-destination", "platform=iOS Simulator,name=iPad 11-inch (A16)", "-scheme", "App"];
+
+        var pointed = XcodeCommand.OnDevices(arguments, ["UDID-9", "UDID-10"]);
+
+        Assert.Equal(["test", "-destination", "platform=iOS Simulator,id=UDID-9", "-destination", "platform=iOS Simulator,id=ABCD", "-destination", "platform=iOS Simulator,id=UDID-10", "-scheme", "App"], pointed);
     }
 
     [Theory]
@@ -106,7 +117,7 @@ public sealed class ContainerCommandTests
 
         Assert.Equal("run", shaped[0]);
         Assert.Contains("snail.owner=buildbridge/Sample/main", shaped);
-        Assert.Contains("/Users/dev/.s3l-build/workspaces/Sample/main:/work", shaped);
+        Assert.Contains("/Users/dev/.s3l-build/workspaces/Sample/main/Sample:/work", shaped);
         Assert.Contains("/Users/dev/.s3l-build/nuget:/root/.nuget/packages", shaped);
         Assert.Contains("s3l-build-dotnet:10.0.302", shaped);
         Assert.Equal(["dotnet", "test", "-c", "Release"], shaped.TakeLast(4));

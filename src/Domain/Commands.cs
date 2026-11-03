@@ -6,8 +6,8 @@ public static class XcodeCommand
     /// <summary>The prefix of a simulator a run clones for itself; what follows is the run's own word.</summary>
     public const string SimulatorPrefix = "snail-build-";
 
-    /// <summary>The derived data of a workspace, relative to its root: <c>derived/&lt;repository&gt;-&lt;branch&gt;</c> under the host's root.</summary>
-    public static string DerivedDataOf(WorkspaceKey key) => $"../../../derived/{WorkspaceKey.Safe(key.Repository)}-{WorkspaceKey.Safe(key.Branch)}";
+    /// <summary>The derived data of a workspace, relative to the copy a command runs in: <c>derived/&lt;repository&gt;-&lt;branch&gt;</c> under the host's root, four folders up.</summary>
+    public static string DerivedDataOf(WorkspaceKey key) => $"../../../../derived/{WorkspaceKey.Safe(key.Repository)}-{WorkspaceKey.Safe(key.Branch)}";
 
     /// <summary>The arguments with the derived data under the root unless the caller named one.</summary>
     public static IReadOnlyList<string> Shaped(IReadOnlyList<string> arguments, WorkspaceKey key)
@@ -18,17 +18,10 @@ public static class XcodeCommand
         return [.. arguments, "-derivedDataPath", DerivedDataOf(key)];
     }
 
-    /// <summary>The simulator the destination names by name, to be cloned for the run; null when the destination names none, or names a device by id.</summary>
-    public static string? SimulatorNamed(IReadOnlyList<string> arguments)
-    {
-        var destination = DestinationOf(arguments);
-        if (destination is null || !destination.GetValueOrDefault("platform", string.Empty).Contains("Simulator", StringComparison.Ordinal))
-            return null;
-        if (destination.ContainsKey("id"))
-            return null;
-
-        return destination.GetValueOrDefault("name");
-    }
+    /// <summary>The simulators the destinations name by name, in their order, each to be cloned for the run; a destination that names none, or a device by id, counts for nothing.</summary>
+    /// <remarks>xcodebuild takes several destinations and tests on them side by side, so a run with two of them is the way to test on an iPhone and an iPad at once: one workspace takes one run at a time.</remarks>
+    public static IReadOnlyList<string> SimulatorsNamed(IReadOnlyList<string> arguments) =>
+        [.. Destinations(arguments).Select(destination => SimulatorIn(destination.Fields)).OfType<string>()];
 
     /// <summary>The spec XcodeGen reads, beside the project the arguments name — or at the workspace's root when they name none.</summary>
     public const string Spec = "project.yml";
@@ -49,18 +42,39 @@ public static class XcodeCommand
     public static IReadOnlyList<string> Generation(string folder) =>
         ["xcodegen", "generate", "--spec", folder == "." ? Spec : $"{folder}/{Spec}", "--project", folder];
 
-    /// <summary>The arguments with the destination pointed at the device <paramref name="udid"/> instead of a name.</summary>
-    public static IReadOnlyList<string> OnDevice(IReadOnlyList<string> arguments, string udid)
+    /// <summary>The arguments with each destination that names a simulator pointed at the device of <paramref name="udids"/> in the same place, instead of a name.</summary>
+    public static IReadOnlyList<string> OnDevices(IReadOnlyList<string> arguments, IReadOnlyList<string> udids)
     {
-        int at = IndexOfDestination(arguments);
-        var destination = DestinationOf(arguments)!;
-        var kept = destination.Where(pair => pair.Key is not "name" and not "OS" and not "id").Select(pair => $"{pair.Key}={pair.Value}");
-        string pointed = string.Join(',', kept.Append($"id={udid}"));
+        var pointed = arguments.ToList();
+        int next = 0;
+        foreach (var (at, fields) in Destinations(arguments))
+        {
+            if (SimulatorIn(fields) is null || next >= udids.Count)
+                continue;
 
-        return [.. arguments.Take(at + 1), pointed, .. arguments.Skip(at + 2)];
+            var kept = fields.Where(pair => pair.Key is not "name" and not "OS" and not "id").Select(pair => $"{pair.Key}={pair.Value}");
+            pointed[at + 1] = string.Join(',', kept.Append($"id={udids[next++]}"));
+        }
+
+        return pointed;
     }
 
-    private static int IndexOfDestination(IReadOnlyList<string> arguments) => IndexOf(arguments, "-destination");
+    private static string? SimulatorIn(Dictionary<string, string> destination)
+    {
+        if (!destination.GetValueOrDefault("platform", string.Empty).Contains("Simulator", StringComparison.Ordinal) || destination.ContainsKey("id"))
+            return null;
+
+        return destination.GetValueOrDefault("name");
+    }
+
+    private static IEnumerable<(int At, Dictionary<string, string> Fields)> Destinations(IReadOnlyList<string> arguments)
+    {
+        for (int index = 0; index < arguments.Count - 1; index++)
+        {
+            if (arguments[index] == "-destination")
+                yield return (index, FieldsOf(arguments[index + 1]));
+        }
+    }
 
     private static int IndexOf(IReadOnlyList<string> arguments, string option)
     {
@@ -73,13 +87,9 @@ public static class XcodeCommand
         return -1;
     }
 
-    private static Dictionary<string, string>? DestinationOf(IReadOnlyList<string> arguments)
+    private static Dictionary<string, string> FieldsOf(string destination)
     {
-        int at = IndexOfDestination(arguments);
-        if (at < 0)
-            return null;
-
-        var pairs = arguments[at + 1].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        var pairs = destination.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(pair => pair.Split('=', 2))
             .Where(parts => parts.Length == 2);
 
@@ -147,7 +157,7 @@ public static class ContainerCommand
         return
         [
             "run", "--rm", "--label", $"{DockerCommand.Label}={DockerCommand.OwnerOf(key)}", .. platform,
-            "-v", $"{root}/{key.Folder}:{Work}", "-w", Work,
+            "-v", $"{root}/{key.CopyFolder}:{Work}", "-w", Work,
             "-v", $"{root}/nuget:/root/.nuget/packages",
             "-v", $"{root}/feeds:{Feeds}:ro",
             "-v", $"{root}/{NuGetConfig}:/root/.nuget/NuGet/NuGet.Config:ro",
@@ -179,4 +189,15 @@ public static class ScriptCommand
 
         return [program, .. arguments.Skip(1)];
     }
+}
+
+/// <summary>The gradle wrapper of a repository as a run starts it: the wrapper at the copy's root, with the arguments as given.</summary>
+/// <remarks>The wrapper fetches the Gradle the project names, into the gradle folder under the root, where the prelude points GRADLE_USER_HOME; the toolchain comes from the root too, through JAVA_HOME and ANDROID_HOME.</remarks>
+public static class GradleCommand
+{
+    /// <summary>The wrapper's file at the copy's root, which git keeps executable.</summary>
+    public const string Wrapper = "gradlew";
+
+    /// <summary>The wrapper as the shell is given it: from the current folder, not from the path.</summary>
+    public const string Program = "./gradlew";
 }

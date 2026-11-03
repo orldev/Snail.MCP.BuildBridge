@@ -23,7 +23,7 @@ public sealed class ProvisioningTests
     {
         var host = new Host("here", "localhost", TestFolder.Create());
         string log = Path.Combine(TestFolder.Create(), "provision.log");
-        var manifest = new BuilderManifest(string.Empty, [], [], [], false);
+        var manifest = new BuilderManifest(string.Empty, [], [], [], false) { HasAndroid = false };
 
         var answer = await Builder().ProvisionAsync(host, manifest, log, TimeSpan.FromSeconds(60), CancellationToken.None);
 
@@ -72,6 +72,38 @@ public sealed class ProvisioningTests
         Assert.Contains("FROM mcr.microsoft.com/dotnet/sdk:${SDK}", script, StringComparison.Ordinal);
         Assert.Contains("""<add key="LocalPackages" value="/feeds/LocalPackages" />""", script, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void ProvisionScript_ManifestWithAndroid_FetchesTheJdkAndTheToolsByChecksumAndNamesThePackages()
+    {
+        var manifest = new BuilderManifest("10.0.302", [], [], []) { AndroidPackages = ["platform-tools", "ndk;28.2.13676358"] };
+
+        var script = ProvisionScripts.Of(new Host("mini", "mini"), manifest);
+
+        Assert.Contains("jdk-21.0.13%2B9/OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.13_9.tar.gz", script, StringComparison.Ordinal);
+        Assert.Contains(BuilderManifest.DefaultJdkSha256, script, StringComparison.Ordinal);
+        Assert.Contains("commandlinetools-mac-11076708_latest.zip", script, StringComparison.Ordinal);
+        Assert.Contains(BuilderManifest.DefaultAndroidToolsSha256, script, StringComparison.Ordinal);
+        Assert.Contains("PACKAGES='platform-tools ndk;28.2.13676358'", script, StringComparison.Ordinal);
+        Assert.Contains("--licenses", script, StringComparison.Ordinal);
+        Assert.Contains("s3l-step jdk", script, StringComparison.Ordinal);
+        Assert.Contains("s3l-step android", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProvisionScript_ManifestWithoutAndroid_LeavesTheToolchainOut()
+    {
+        var script = ProvisionScripts.Of(new Host("mini", "mini"), new BuilderManifest("10.0.302", [], [], []) { HasAndroid = false });
+
+        Assert.DoesNotContain("s3l-step jdk", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("sdkmanager", script, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("21.0.13+9", "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.13_9.tar.gz")]
+    [InlineData("17.0.17+10", "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.17%2B10/OpenJDK17U-jdk_aarch64_mac_hotspot_17.0.17_10.tar.gz")]
+    public void JdkUrlOf_AVersionAsAdoptiumNamesIt_IsTheReleaseAssetForMacArm64(string version, string expected) =>
+        Assert.Equal(expected, BuilderManifests.JdkUrlOf(version));
 
     [Fact]
     public void ImageScript_Android_BuildsForAmd64UnderItsOwnLabel()

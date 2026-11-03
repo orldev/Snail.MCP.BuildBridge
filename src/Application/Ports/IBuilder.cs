@@ -33,6 +33,9 @@ public interface IBuilder
     /// <summary>Brings the named paths of a workspace, relative to its root, into <paramref name="folder"/> on this machine.</summary>
     Task<Answer<Collected>> CollectAsync(Host host, WorkspaceKey key, IReadOnlyList<string> paths, string folder, CancellationToken cancellationToken);
 
+    /// <summary>Puts a supply under the host's root — Android SDK packages, a .NET SDK, workloads — those not there yet; answers what it put in place, in the supply's words, or why it could not — a licence only a person accepts among the reasons.</summary>
+    Task<Answer<IReadOnlyList<string>>> SupplyAsync(Host host, Supply supply, CancellationToken cancellationToken);
+
     /// <summary>What lies under the host's root: every workspace of this server's, the derived data, the images and build cache, the packages, the room left.</summary>
     Task<Answer<Survey>> SurveyAsync(Host host, CancellationToken cancellationToken);
 

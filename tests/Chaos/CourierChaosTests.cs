@@ -40,7 +40,7 @@ public sealed class CourierChaosTests
         var copy = await CopyAsync(repository);
         var courier = Courier();
         await courier.DeliverAsync(host, copy, false, CancellationToken.None);
-        string built = Path.Combine(host.Root, copy.Workspace.Folder, "out", "built.bin");
+        string built = Path.Combine(host.Root, copy.Workspace.CopyFolder, "out", "built.bin");
         Directory.CreateDirectory(Path.GetDirectoryName(built)!);
         await File.WriteAllTextAsync(built, "made on the host", CancellationToken.None);
 
@@ -66,7 +66,7 @@ public sealed class CourierChaosTests
         try
         {
             await courier.DeliverAsync(host, copy, false, CancellationToken.None);
-            string built = Path.Combine(host.Root, copy.Workspace.Folder, "out", "built.bin");
+            string built = Path.Combine(host.Root, copy.Workspace.CopyFolder, "out", "built.bin");
             Directory.CreateDirectory(Path.GetDirectoryName(built)!);
             await File.WriteAllTextAsync(built, "made on the host", CancellationToken.None);
             await File.WriteAllTextAsync(Path.Combine(repository, "later.txt"), "later", CancellationToken.None);
@@ -74,7 +74,7 @@ public sealed class CourierChaosTests
             var again = await courier.DeliverAsync(host, copy, false, CancellationToken.None);
 
             Assert.Null(again.Error);
-            Assert.True(File.Exists(Path.Combine(host.Root, copy.Workspace.Folder, "later.txt")));
+            Assert.True(File.Exists(Path.Combine(host.Root, copy.Workspace.CopyFolder, "later.txt")));
             Assert.True(File.Exists(built), "the host's own output under an ignored folder was deleted by the session");
         }
         finally
@@ -94,7 +94,7 @@ public sealed class CourierChaosTests
         var both = await Task.WhenAll(courier.DeliverAsync(host, copy, false, CancellationToken.None), courier.DeliverAsync(host, copy, false, CancellationToken.None));
 
         Assert.All(both, delivery => Assert.Null(delivery.Error));
-        Assert.True(File.Exists(Path.Combine(host.Root, copy.Workspace.Folder, "src", "Program.cs")));
+        Assert.True(File.Exists(Path.Combine(host.Root, copy.Workspace.CopyFolder, "src", "Program.cs")));
     }
 
     /// <summary>A copy whose root was deleted between the read and the delivery: an answer, not an exception.</summary>

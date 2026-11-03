@@ -47,6 +47,27 @@ public sealed class SweepTests
         Assert.Equal("24h", items[3].Name);
     }
 
+    /// <summary>What an update left behind goes in caches: an SDK nothing names, build tools and NDKs older than the newest unless the settings name them, toolchain images of another SDK.</summary>
+    [Fact]
+    public void Outdated_VersionsAnUpdateLeftBehind_AreNamedUnlessSettingsOrAWorkspaceKeepThem()
+    {
+        var survey = Of(Fresh) with
+        {
+            Sdks = ["10.0.100", "10.0.302", "9.0.305"],
+            SdksWanted = ["9.0.305"],
+            BuildTools = ["36.0.0", "36.1.0", "35.0.0"],
+            Ndks = ["28.1.13356709", "28.2.13676358"],
+            ToolImages = ["s3l-build-dotnet:10.0.302", "s3l-build-dotnet:10.0.100"]
+        };
+        var rules = new SweepRules { KeptSdk = "10.0.302", KeptPackages = ["build-tools;36.0.0"], KeptImages = ["s3l-build-dotnet:10.0.302"] };
+
+        var items = Sweep.Outdated(survey, rules);
+
+        Assert.Equal(["10.0.100", "build-tools;35.0.0", "ndk;28.1.13356709", "s3l-build-dotnet:10.0.100"], items.Select(item => item.Name));
+        Assert.Equal([SweepKind.Sdk, SweepKind.Package, SweepKind.Package, SweepKind.Images], items.Select(item => item.Kind));
+        Assert.Contains(Sweep.Decide(survey, rules, Now, SweepScope.Caches), item => item.Name == "10.0.100");
+    }
+
     [Fact]
     public void Decide_Everything_TakesAllButTheSdk()
     {

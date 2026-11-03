@@ -6,9 +6,11 @@ namespace Snail.MCP.BuildBridge.Adapters;
 
 /// <summary>How a shell script reaches a host: through ssh, or straight into a shell when the host is this machine.</summary>
 /// <remarks>
-/// A script is handed to ssh as one argument, which the host's login shell runs as it is, newlines and quotes
-/// included; a non-interactive shell reads no profile, so the script itself puts the root's programs on the path. The
-/// root is spoken of as <c>$HOME</c> rather than <c>~</c>, which only an interactive shell expands inside quotes.
+/// A script is handed to ssh as one argument, quoted for the host's login shell, which hands it on to <c>/bin/sh</c>:
+/// the login shell of an account is zsh on a Mac, and zsh leaves <c>$words</c> as one word where sh splits them, so
+/// a script written for sh runs in sh on every host. A non-interactive shell reads no profile, so the script itself
+/// puts the root's programs on the path. The root is spoken of as <c>$HOME</c> rather than <c>~</c>, which only an
+/// interactive shell expands inside quotes.
 /// </remarks>
 public sealed class RemoteShell(IOptions<BuildOptions> options)
 {
@@ -16,12 +18,16 @@ public sealed class RemoteShell(IOptions<BuildOptions> options)
     public string[] Command(Host host, string script) =>
         host.IsLocal
             ? ["/bin/sh", "-c", script]
-            : [options.Value.Ssh, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host.Address, script];
+            : [options.Value.Ssh, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host.Address, $"exec /bin/sh -c {Quoted(script)}"];
 
-    /// <summary>The lines every script starts with: the root's programs first on the path, the root's SDK and packages for dotnet, and dotnet's words in English.</summary>
+    /// <summary>
+    /// The lines every script starts with: the root's programs first on the path, then the places a Mac keeps programs a
+    /// person installed — OrbStack's docker, Homebrew — which a non-interactive shell does not look in, the root's SDK and
+    /// packages for dotnet, and dotnet's words in English.
+    /// </summary>
     public static string Prelude(Host host) =>
         $"""
-        export PATH={Root(host)}/bin:{Root(host)}/dotnet:"$PATH"
+        export PATH={Root(host)}/bin:{Root(host)}/dotnet:/usr/local/bin:/opt/homebrew/bin:"$HOME/.orbstack/bin":"$PATH"
         export NUGET_PACKAGES={Under(host, "nuget")} DOTNET_CLI_UI_LANGUAGE=en DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
         [ -d {Under(host, "dotnet")} ] && export DOTNET_ROOT={Under(host, "dotnet")}
 

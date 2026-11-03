@@ -386,7 +386,7 @@ public sealed class SshBuilder(IPrograms programs, ICopies copies, RemoteShell s
             if [ -n "$xcode" ]; then echo "s3l-step xcode 1 $xcode"; else echo "s3l-step xcode 0 {{{Messages.InstallXcode}}}"; fi
             docker="$(docker version --format '{{.Server.Version}}' 2>/dev/null)"
             if [ -n "$docker" ]; then echo "s3l-step docker 1 Docker $docker"; else echo "s3l-step docker 0 {{{Messages.InstallDocker}}}"; fi
-            if pmset -g 2>/dev/null | grep -q 'SleepDisabled *1'; then echo "s3l-step sleep 1 sleep is disabled"; else echo "s3l-step sleep 0 {{{Messages.KeepAwake}}}"; fi
+            if pmset -g 2>/dev/null | grep -Eq '^ *(SleepDisabled +1|sleep +0)'; then echo "s3l-step sleep 1 the host does not sleep"; else echo "s3l-step sleep 0 {{{Messages.KeepAwake}}}"; fi
             """;
     }
 

@@ -1,0 +1,15 @@
+name: build and tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: orldev/Snail.Sdk/.github/workflows/mcp-ci.yml@v1
+    with:
+      contract-variable: SNAIL_BUILDBRIDGE_SERVER

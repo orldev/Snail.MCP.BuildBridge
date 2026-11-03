@@ -1,0 +1,6 @@
+{
+  "families": [
+    { "type": "BuildTools", "slug": "builds", "title": "Builds" },
+    { "type": "DiagnosticsTools", "slug": "diagnostics", "title": "Diagnostics" }
+  ]
+}

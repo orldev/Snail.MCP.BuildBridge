@@ -1,0 +1,19 @@
+<Project Sdk="Snail.Sdk.Mcp">
+
+  <!-- A test project of a server: Snail.Sdk.Mcp gives it Snail.Sdk.Mcp.Testing, the contract and the guard rules. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../src/Snail.MCP.BuildBridge.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

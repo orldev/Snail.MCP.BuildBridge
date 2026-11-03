@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/Snail.MCP.BuildBridge.csproj" />
+  <Project Path="tests/Snail.MCP.BuildBridge.Tests.csproj" />
+  <Project Path="benchmarks/Snail.MCP.BuildBridge.Benchmarks.csproj" />
+</Solution>

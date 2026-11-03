@@ -1,0 +1,51 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+  "name": "io.github.orldev/snail-mcp-buildbridge",
+  "description": "Runs builds and tests of a working copy on another Mac over SSH and brings the results back.",
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "nuget",
+      "identifier": "Snail.MCP.BuildBridge",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [],
+      "environmentVariables": [
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_HOSTS__0__NAME",
+          "description": "The word the first host is named by, such as mini; add HOSTS__1 and so on for more. The first host is the one a call that names none gets.",
+          "isRequired": true
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_HOSTS__0__ADDRESS",
+          "description": "What ssh is given for the first host: an alias from the SSH configuration, or user@host.",
+          "isRequired": true
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_HOSTS__0__ROOT",
+          "description": "The folder everything the server makes on the host lives under.",
+          "isRequired": false,
+          "default": "~/.s3l-build"
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_SDK_VERSION",
+          "description": "The .NET SDK provisioning installs under a host's root; empty leaves the host's own dotnet to be used.",
+          "isRequired": false,
+          "default": "10.0.302"
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_LOW_DISK_GIGABYTES",
+          "description": "Free gigabytes on a host below which a run sweeps the caches first.",
+          "isRequired": false,
+          "default": "20"
+        }
+      ]
+    }
+  ],
+  "repository": {
+    "url": "https://github.com/orldev/Snail.MCP.BuildBridge",
+    "source": "github"
+  }
+}

@@ -1,0 +1,9 @@
+<Project>
+
+  <!-- The rest of the build — language, nullable, docs, analyzers, warnings as errors — is Snail.Sdk's (global.json). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+</Project>

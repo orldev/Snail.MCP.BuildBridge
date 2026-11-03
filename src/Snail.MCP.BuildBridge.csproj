@@ -1,0 +1,20 @@
+<Project Sdk="Snail.Sdk.Mcp">
+
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Description>Runs builds and tests of a working copy on another Mac over SSH and brings the results back.</Description>
+    <PackageTags>mcp;mcp-server;modelcontextprotocol;ai</PackageTags>
+    <RepositoryUrl>https://github.com/orldev/Snail.MCP.BuildBridge</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/orldev/Snail.MCP.BuildBridge</PackageProjectUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Snail.MCP.BuildBridge.Tests" />
+    <InternalsVisibleTo Include="Snail.MCP.BuildBridge.Benchmarks" />
+  </ItemGroup>
+
+</Project>

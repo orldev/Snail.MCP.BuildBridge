@@ -1,0 +1,299 @@
+[
+  {
+    "name": "build_hosts",
+    "description": "List the build hosts this server knows and what each can do right now: whether it answers over ssh, which\ntoolchains it has with their versions \u2014 dotnet, xcode and docker \u2014 and how many gigabytes are free under its home. A host\nthat does not answer says why. Changes nothing. The first host is the one a call that names none gets.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "skill": null
+  },
+  {
+    "name": "build_provision",
+    "description": "Make a host ready to build: create its root with its folders, install the .NET SDK the settings name under the\nroot with its workloads, add the mirrored package feeds to its NuGet sources, and look at Xcode, Docker and\nsleep \u2014 those a person installs or sets, and the answer says how. Run it on a new host, and again after the\nsettings change; what is in place already is left as it is. The work runs as a job: the answer is the job\u0027s\nreport, with the steps as its result when it ends within the wait, or the running job, whose resource\njob://buildbridge/provision/\u003Cid\u003E carries them once it ends. A workload install is minutes; the job may run up\nto 3600 seconds.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "description": "The host to use, by the name build_hosts lists; the first host when not given.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "wait": {
+          "description": "Seconds to wait for the work before answering with the running job; 60 when not given, 0 answers with the job at once.",
+          "type": "integer",
+          "default": 60
+        }
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "skill": null
+  },
+  {
+    "name": "build_sync",
+    "description": "Deliver the working copy a path lies in to a host\u0027s workspace, or with dryRun list what a delivery would send\nwithout sending it. The workspace is one per repository and branch under the host\u0027s root. Only what changed\ngoes over the wire; what git ignores and what a build makes again \u2014 bin, obj, artifacts, TestResults \u2014 never\ngoes, and a tracked file deleted here is deleted there. Build outputs already on the host are left alone, so a\nbuild there stays incremental. A linked worktree is delivered without its .git. A delivery may take up to 600\nseconds. build_run delivers by itself before it runs, so call this to check a delivery, not before every run.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "description": "A path inside the working copy to deliver, such as the repository\u0027s root.",
+          "type": "string"
+        },
+        "host": {
+          "description": "The host to use, by the name build_hosts lists; the first host when not given.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "dryRun": {
+          "description": "List what would be sent and send nothing; false when not given.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "path"
+      ]
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "skill": null
+  },
+  {
+    "name": "build_run",
+    "description": "Build, test or publish a working copy on a host and get back how it went. The copy a path lies in is delivered\nfirst (as build_sync does), then the program of the kind \u2014 dotnet, xcode or docker: dotnet, xcodebuild or docker \u2014 runs in the\nworkspace with the arguments given, such as test -c Release, or build -scheme App -destination\n\u0027platform=iOS Simulator,name=iPhone 17\u0027, or compose up -d --build. The answer says whether it succeeded, the\nexit code, what the tests said when there were any, and where the log is on this machine, which build_logs\nreads. Outputs stay on the host, where the next run finds them; build_fetch brings named paths back. An\nxcodebuild run keeps its derived data under the host\u0027s root, and a destination that names a simulator by name\ngets a clone of it for the run alone, deleted when the run ends. A docker build or run carries the label\nsnail.owner, and a compose stand is the project s3l-\u003Crepository\u003E-\u003Cbranch\u003E unless -p names one. The work\nruns as a job: the answer is the job\u0027s report, with the build as its result when it ends within the wait, or\nthe running job, whose resource job://buildbridge/\u003Ckind\u003E/\u003Cid\u003E carries it once it ends and whose message names\nthe log. A run may take up to 3600 seconds; one workspace takes one run at a time, and a second waits its turn.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "description": "A path inside the working copy to build, such as the repository\u0027s root.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Which program runs: dotnet, xcode or docker.",
+          "type": "string"
+        },
+        "arguments": {
+          "description": "The program\u0027s arguments, one word each, as they would be typed in the workspace\u0027s root: [\u0022test\u0022, \u0022-c\u0022, \u0022Release\u0022].",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "host": {
+          "description": "The host to use, by the name build_hosts lists; the first host when not given.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "wait": {
+          "description": "Seconds to wait for the work before answering with the running job; 60 when not given, 0 answers with the job at once.",
+          "type": "integer",
+          "default": 60
+        }
+      },
+      "required": [
+        "path",
+        "kind",
+        "arguments"
+      ]
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "skill": null
+  },
+  {
+    "name": "build_logs",
+    "description": "Read the end of a build\u0027s log on this machine, as build_run named it, while the build runs or after it ended.\nOnly a log of this server is read. The last 100 lines unless asked for more, at most 2000.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "log": {
+          "description": "The log\u0027s path, as build_run\u0027s answer or its job\u0027s message names it.",
+          "type": "string"
+        },
+        "lines": {
+          "description": "How many lines from the end to read; 100 when not given, at most 2000.",
+          "type": "integer",
+          "default": 100
+        }
+      },
+      "required": [
+        "log"
+      ]
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "skill": null
+  },
+  {
+    "name": "build_cancel",
+    "description": "Stop a running job of this server \u2014 a build or a provisioning \u2014 by the job resource build_run or build_provision\nanswered with: the command is stopped on the host too. A job that ended already is left as it is.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "job": {
+          "description": "The job\u0027s resource, job://buildbridge/\u003Ckind\u003E/\u003Cid\u003E.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "job"
+      ]
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "skill": null
+  },
+  {
+    "name": "build_fetch",
+    "description": "Bring named paths of a workspace back to this machine: test results, a bundle for a simulator, a package, a\npublished folder. Paths are relative to the workspace\u0027s root, such as tests/TestResults or\nsrc/bin/Release/net10.0/publish; they land under their own path inside the folder named, or inside this\nserver\u0027s data folder by repository and branch when none is. Only what changed goes over the wire.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "description": "A path inside the working copy whose workspace is read, such as the repository\u0027s root.",
+          "type": "string"
+        },
+        "paths": {
+          "description": "The paths to bring back, relative to the workspace\u0027s root.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "host": {
+          "description": "The host to use, by the name build_hosts lists; the first host when not given.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "into": {
+          "description": "The folder on this machine they land in; this server\u0027s data folder, by repository and branch, when not given.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "path",
+        "paths"
+      ]
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "skill": null
+  },
+  {
+    "name": "build_clean",
+    "description": "Give a host its room back, in two calls: first a plan of a scope is decided and shown under a planId, then that\nplan, and only it, is carried out when called again with the planId. Nothing on a host is the only copy of\nanything, so a sweep erases. The scopes are workspace, repository, caches or everything: one workspace (the copy at path, or repository and\nbranch), every workspace of a repository, what has gone stale \u2014 workspaces not built for 14 days, derived\ndata of workspaces that are gone, images older than 7 days, build cache not used for 24 hours, logs older\nthan 30 days \u2014 or everything under the root but the SDK. A plan is kept 10 minutes. build_run sweeps by itself:\na repository\u0027s stale workspaces after each run, and the caches before one when the host has less than 20 GB\nfree.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "description": "How much is looked at: workspace, repository, caches or everything.",
+          "type": "string"
+        },
+        "path": {
+          "description": "A path inside the working copy whose workspace or repository is meant; not needed for caches or everything.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "repository": {
+          "description": "The repository\u0027s name, instead of a path, for a repository sweep.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "host": {
+          "description": "The host to use, by the name build_hosts lists; the first host when not given.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "planId": {
+          "description": "The planId of a plan shown before, to carry it out; not given, a new plan is shown.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "scope"
+      ]
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "skill": null
+  },
+  {
+    "name": "build_diagnose",
+    "description": "Say what state this server is in: its version, the hosts its settings name, whether ssh, rsync and git are on\nthis machine, and where it keeps its data. Changes nothing. Start here when a build does not go where it should.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "skill": null
+  }
+]

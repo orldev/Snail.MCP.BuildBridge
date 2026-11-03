@@ -278,7 +278,7 @@ public sealed class SshBuilderTests
             s3l-free 612
             """;
 
-        var survey = SshBuilder.SurveyOf(new Host("mini", "mini"), output);
+        var survey = Surveys.Of(new Host("mini", "mini"), output);
 
         var workspace = Assert.Single(survey.Workspaces);
         Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1762170000), workspace.LastUsed);

@@ -1,7 +1,7 @@
 [
   {
     "name": "build_hosts",
-    "description": "List the build hosts this server knows and what each can do right now: whether it answers over ssh, which\ntoolchains it has with their versions \u2014 dotnet, xcode and docker \u2014 and how many gigabytes are free under its home. A host\nthat does not answer says why. Changes nothing. The first host is the one a call that names none gets.",
+    "description": "List the build hosts this server knows and what each can do right now: whether it answers over ssh, which\ntoolchains it has with their versions \u2014 dotnet, xcode, docker, android and node \u2014 which .NET SDKs it holds under its root, and how\nmany gigabytes are free under its home. A host that does not answer says why. Changes nothing. The first\nhost is the one a call that names none gets.",
     "inputSchema": {
       "type": "object",
       "properties": {}
@@ -16,7 +16,7 @@
   },
   {
     "name": "build_provision",
-    "description": "Make a host ready to build: create its root with its folders, install the .NET SDK the settings name under the\nroot with its workloads, add the mirrored package feeds to its NuGet sources, build the images the settings\nname for the linux and android kinds when docker is there, put xcodegen under the root when Xcode is there,\nand look at Xcode, Docker, Rosetta and sleep \u2014 those a person installs or sets, since each means a licence or\na password, and the answer says how. Run it on a new host, and again after the settings change;\nwhat is in place already is left as it is. The work runs as a job: the answer is the job\u0027s report, with the\nsteps as its result when it ends within the wait, or the running job, whose resource\njob://buildbridge/provision/\u003Cid\u003E carries them once it ends. A workload install is minutes and the android\nimage longer; the job may run up to 3600 seconds.",
+    "description": "Make a host ready to build: create its root with its folders, install the .NET SDK the settings name under the\nroot with its workloads, add the mirrored package feeds to its NuGet sources, build the images the settings\nname for the linux and android kinds when docker is there, put xcodegen under the root when Xcode is there,\nput a JDK and the Android SDK with its NDK under the root for the gradle and android kinds \u2014 whose licences a\nperson accepts, and the answer says how \u2014 put Node under the root for the npm kind, and look at Xcode,\nDocker, Rosetta and sleep \u2014 those a person\ninstalls or sets, since each means a licence or a password, and the answer says how. Run it on a new host,\nand again after the settings change or a licence is accepted; what is in place already is left as it is. The\nwork runs as a job: the answer is the job\u0027s report, with the steps as its result when it ends within the wait,\nor the running job, whose resource job://buildbridge/provision/\u003Cid\u003E carries them once it ends. A workload\ninstall is minutes, the Android packages and an image longer; the job may run up to 3600 seconds.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -81,7 +81,7 @@
   },
   {
     "name": "build_run",
-    "description": "Build, test or publish a working copy on a host and get back how it went. The copy a path lies in is delivered\nfirst (as build_sync does), then the program of the kind \u2014 dotnet, xcode, docker, linux, android or script: dotnet, xcodebuild, docker, or dotnet\ninside the host\u0027s s3l-build-dotnet or s3l-build-android image \u2014 runs in the workspace with the arguments\ngiven, such as test -c Release, or build -scheme App -destination \u0027platform=iOS Simulator,name=iPhone 17\u0027, or\ncompose up -d --build. The linux kind is for a Linux target, Native AOT for Linux or tests on Linux, the\nandroid kind for an Android build; both mount the workspace, the packages and the feeds into the container,\nand the android image runs under emulation on an Apple Silicon host. The script kind runs a script of the\nrepository as it is: the first argument is its path from the workspace\u0027s root, such as\ntools/native/build-xcframework.sh, the rest its arguments; it must be executable, as git keeps it, and finds\nthe host\u0027s dotnet on its path \u2014 for what a build needs that no one program says, before another run. The\nanswer says whether it succeeded, the\nexit code, what the tests said when there were any, and where the log is on this machine, which build_logs\nreads. Outputs stay on the host, where the next run finds them; build_fetch brings named paths back. An\nxcodebuild run keeps its derived data under the host\u0027s root, a destination that names a simulator by name\ngets a clone of it for the run alone, deleted when the run ends, and a project with a project.yml beside it is\ngenerated on the host by xcodegen first, since a generated project is what git ignores. A docker build or run carries the label\nsnail.owner, and a compose stand is the project s3l-\u003Crepository\u003E-\u003Cbranch\u003E unless -p names one. The work\nruns as a job: the answer is the job\u0027s report, with the build as its result when it ends within the wait, or\nthe running job, whose resource job://buildbridge/\u003Ckind\u003E/\u003Cid\u003E carries it once it ends and whose message names\nthe log. A run may take up to 3600 seconds; one workspace takes one run at a time, and a second waits its turn.",
+    "description": "Build, test or publish a working copy on a host and get back how it went: the copy a path lies in is delivered\nfirst (as build_sync does), the program of the kind runs in its workspace with the arguments given, and the\nanswer says whether it succeeded, the exit code, what the tests said when there were any, and where the log\nis on this machine, which build_logs reads. Outputs stay on the host, where the next run finds them;\nbuild_fetch brings named paths back.\n\nThe kinds \u2014 dotnet, xcode, docker, linux, android, gradle, npm or script. dotnet runs dotnet on the host, such as test -c Release. xcode runs xcodebuild, such as\nbuild -scheme App -destination \u0027platform=iOS Simulator,name=iPhone 17\u0027. docker runs docker, such as compose\nup -d --build. linux runs dotnet inside the host\u0027s s3l-build-dotnet image: a Linux target, Native AOT for\nLinux, tests on Linux. android runs dotnet for an Android target: on the host when it has the Android\ntoolchain under its root, inside the s3l-build-android image otherwise. gradle runs the repository\u0027s gradlew,\nsuch as assembleDebug, with the JDK, the SDK and the NDK under the root. npm runs npm with Node under the root,\nsuch as ci, test, run build, or exec -- playwright install, npm\u0027s cache and Playwright\u0027s browsers kept under\nthe root too. script runs a script of the\nrepository as it is \u2014 the first argument its path from the workspace\u0027s root, such as\ntools/native/build-xcframework.sh, the rest its arguments \u2014 for what a build needs that no one program says.\n\nWhat a build needs beyond the host\u0027s comes with the build, not from the settings: needs names Android SDK\npackages, put under the root before the run and kept; the .NET SDK the copy\u0027s global.json names goes under\nthe root when none there meets it; a dotnet build that fails for want of a platform (XA5207) or of workloads\n(NETSDK1147) gets them and runs again by itself, once; a gradle build fetches what its project names on its\nown. environment assigns variables for the run that are no secret; the secrets the settings name for the\nrepository reach the host\u0027s shell for the run alone, never a tool, a job or the log, and build_diagnose\nsays which names those are.\n\nAn xcode run keeps its derived data under the host\u0027s root; each destination that names a simulator by name\ngets a clone of it for the run alone, deleted when the run ends, so several destinations in one run test on\nan iPhone and an iPad side by side; a project with a project.yml beside it is generated on the host by\nxcodegen first. A docker build or run carries the label snail.owner, and a compose stand is the project\ns3l-\u003Crepository\u003E-\u003Cbranch\u003E unless -p names one.\n\nThe work runs as a job: the answer is the job\u0027s report, with the build as its result when it ends within the\nwait, or the running job, whose resource job://buildbridge/\u003Ckind\u003E/\u003Cid\u003E carries it once it ends and whose\nmessage names the log. A run may take up to 3600 seconds. One workspace \u2014 a repository on a branch \u2014 takes\none run at a time, and a second waits its turn; runs in other workspaces, another branch or another\nrepository, go side by side.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -90,7 +90,7 @@
           "type": "string"
         },
         "kind": {
-          "description": "Which program runs: dotnet, xcode, docker, linux, android or script.",
+          "description": "Which program runs: dotnet, xcode, docker, linux, android, gradle, npm or script.",
           "type": "string"
         },
         "arguments": {
@@ -99,6 +99,34 @@
           "items": {
             "type": "string"
           }
+        },
+        "needs": {
+          "description": "Android SDK packages this build needs beyond what the host has, as sdkmanager names them \u2014 [\u0022platforms;android-37\u0022, \u0022build-tools;37.0.0\u0022]; a platform named by its API level is taken with the minor version Google gives it \u2014 put under the host\u0027s root before the run and kept there; none when not given.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default": null
+        },
+        "environment": {
+          "description": "Variables for the run that are no secret, NAME=value each, such as [\u0022ASPNETCORE_ENVIRONMENT=Testing\u0022]; none when not given. A secret never comes this way: the settings name it under Secrets, and the run gets it from this machine\u0027s file or keychain for the repository it is scoped to.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default": null
         },
         "host": {
           "description": "The host to use, by the name build_hosts lists; the first host when not given.",
@@ -228,7 +256,7 @@
   },
   {
     "name": "build_clean",
-    "description": "Give a host its room back, in two calls: first a plan of a scope is decided and shown under a planId, then that\nplan, and only it, is carried out when called again with the planId. Nothing on a host is the only copy of\nanything, so a sweep erases. The scopes are workspace, repository, caches or everything: one workspace (the copy at path, or repository and\nbranch), every workspace of a repository, what has gone stale \u2014 workspaces not built for 14 days, derived\ndata of workspaces that are gone, images older than 7 days, build cache not used for 24 hours, logs older\nthan 30 days \u2014 or everything under the root but the SDK. A plan is kept 10 minutes. build_run sweeps by itself:\na repository\u0027s stale workspaces after each run, and the caches before one when the host has less than 20 GB\nfree.",
+    "description": "Give a host its room back, in two calls: first a plan of a scope is decided and shown under a planId, then that\nplan, and only it, is carried out when called again with the planId. Nothing on a host is the only copy of\nanything, so a sweep erases. The scopes are workspace, repository, caches or everything: one workspace (the copy at path, or repository and\nbranch), every workspace of a repository, what has gone stale \u2014 workspaces not built for 14 days, Xcode\u0027s\nderived data and test bundles inside a copy nothing wrote into for 7 days, derived data of workspaces that\nare gone, images older than 7 days, build cache not used for 6 hours, logs older than 30 days, and the\nversions an update left behind: SDKs no settings and no workspace\u0027s global.json name, build tools and NDKs\nolder than the newest unless the settings name them, toolchain images the settings do not name \u2014 or\neverything under the root but the SDK. A plan is kept 10 minutes. build_run sweeps by itself: after each run\na repository\u0027s stale workspaces, the quiet outputs inside its copies and the build cache past its hours, and\nthe caches before one when the host has less than 20 GB free.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -283,7 +311,7 @@
   },
   {
     "name": "build_diagnose",
-    "description": "Say what state this server is in: its version, the hosts its settings name, whether ssh, rsync, git and\nmutagen are on this machine, what carries a copy, and where it keeps its data. Changes nothing. Start here\nwhen a build does not go where it should.",
+    "description": "Say what state this server is in: its version, the hosts its settings name, whether ssh, rsync, git and\nmutagen are on this machine, what carries a copy, the secrets the settings name \u2014 by name, source and\nrepository, never their values \u2014 and where it keeps its data. Changes nothing. Start here when a build does\nnot go where it should.",
     "inputSchema": {
       "type": "object",
       "properties": {}

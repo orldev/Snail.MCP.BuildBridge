@@ -94,7 +94,9 @@ result once it ends.
      such as a core packed into a framework before an `xcode` run. It must be executable, as git keeps it, and lie
      inside the copy.
 6. The log is read for what the tests said, in the words of VSTest or of the testing platform.
-7. The repository's workspaces not built for 14 days, and derived data of workspaces that are gone, are swept.
+7. The repository's workspaces not built for 14 days, Xcode's derived data and test bundles in its copies nothing
+   wrote into for 7 days — a branch built every day is never stale, and what its builds leave in its copy is no
+   delivery's to remove — derived data of workspaces that are gone, and the build cache not used for 6 hours are swept.
 
 ## The host
 
@@ -163,7 +165,7 @@ A host that is this machine — `localhost` — is worked without ssh, straight 
 | `Sync` | `rsync` | What carries a copy: `rsync`, a mirror before every run, or `mutagen`, a session per workspace that keeps it mirrored; `Mutagen` names the program. |
 | `Excludes` | `bin obj artifacts TestResults BenchmarkDotNet.Artifacts node_modules .DS_Store` | Folders a delivery never sends. |
 | `TransferSeconds`, `RunSeconds`, `ProbeSeconds` | 600, 3600, 20 | How long a delivery, a run, a probe may take. |
-| `WorkspaceDays`, `JobDays`, `ImageDays`, `BuildCacheHours` | 14, 30, 7, 24 | The ages a sweep goes by. |
+| `WorkspaceDays`, `JobDays`, `ImageDays`, `BuildCacheHours`, `OutputDays` | 14, 30, 7, 6, 7 | The ages a sweep goes by. |
 | `LowDiskGigabytes` | 20 | Free gigabytes on a host below which a run sweeps the caches first. |
 
 ## What is swept, and when
@@ -174,7 +176,8 @@ A host that is this machine — `localhost` — is worked without ssh, straight 
 | derived data | named for a workspace | its workspace is gone; `everything` |
 | images a run made | the label `snail.owner` | older than `ImageDays` in `caches`; all in `everything` |
 | the images of the container kinds | the label `snail.image` | `everything` only |
-| the build cache | shared | entries not used for `BuildCacheHours` in `caches`; all in `everything` |
+| Xcode's derived data and test bundles inside a copy | inside a workspace with its marker | nothing written into them for `OutputDays`, after a run of their repository; `caches` |
+| the build cache | shared | entries not used for `BuildCacheHours`, after every run and in `caches`; all in `everything` |
 | the packages, Gradle's files, npm's cache and Playwright's browsers under the root | under the root | `everything` only |
 | an SDK under the root | under the root | no settings and no workspace's `global.json` name it; `caches` |
 | build tools and NDKs | under the root | older than the newest, unless the settings name them; `caches` |

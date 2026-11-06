@@ -265,6 +265,68 @@ public sealed class SshBuilderTests
         Assert.True(survey.FreeGigabytes > 0);
     }
 
+    /// <summary>
+    /// The iOS copy of 2026-11-06: derived data under names of its own in artifacts, test bundles beside it and inside its
+    /// logs, and folders that only look alike — logs beside a build, a bundle among packages.
+    /// </summary>
+    [Fact]
+    public async Task SurveyAsync_OutputsInsideACopy_AreFoundOutermostWithTheirLastWrite()
+    {
+        var host = LocalHost();
+        var builder = Builder();
+        var copy = await CopyAsync(Repositories.Create("Anonym"));
+        await builder.DeliverAsync(host, copy, false, CancellationToken.None);
+        string inside = Path.Combine(host.Root, copy.Workspace.CopyFolder);
+        Directory.CreateDirectory(Path.Combine(inside, "artifacts", "app-dd", "ModuleCache.noindex", "ABC"));
+        Directory.CreateDirectory(Path.Combine(inside, "artifacts", "app-dd", "Logs", "Test", "Run.xcresult"));
+        Directory.CreateDirectory(Path.Combine(inside, "artifacts", "kit-dd", "SourcePackages"));
+        Directory.CreateDirectory(Path.Combine(inside, "artifacts", "kit-dd", "Logs"));
+        string old = Directory.CreateDirectory(Path.Combine(inside, "artifacts", "tests", "run 1.xcresult", "Data")).FullName;
+        Directory.CreateDirectory(Path.Combine(inside, "out", "Logs"));
+        Directory.CreateDirectory(Path.Combine(inside, "out", "Build"));
+        Directory.CreateDirectory(Path.Combine(inside, "node_modules", "kit", "Old.xcresult"));
+        File.WriteAllText(Path.Combine(old, "data.0"), "x");
+        File.SetLastWriteTimeUtc(Path.Combine(old, "data.0"), DateTime.UtcNow.AddDays(-10));
+        Directory.SetLastWriteTimeUtc(old, DateTime.UtcNow.AddDays(-10));
+        Directory.SetLastWriteTimeUtc(Path.GetDirectoryName(old)!, DateTime.UtcNow.AddDays(-10));
+
+        var survey = Assert.IsType<Survey>((await builder.SurveyAsync(host, CancellationToken.None)).Value);
+
+        Assert.Equal(["artifacts/app-dd", "artifacts/kit-dd", "artifacts/tests/run 1.xcresult"], survey.Outputs.Select(output => output.Path).Order(StringComparer.Ordinal));
+        Assert.All(survey.Outputs, output => Assert.Equal(new WorkspaceKey("Anonym", "main"), output.Key));
+        Assert.True(survey.Outputs.Single(output => output.Path.EndsWith(".xcresult", StringComparison.Ordinal)).LastWritten < DateTimeOffset.UtcNow.AddDays(-9));
+    }
+
+    [Fact]
+    public async Task CarryOutAsync_AnOutput_IsErasedAndTheCopyStays()
+    {
+        var host = LocalHost();
+        var builder = Builder();
+        var copy = await CopyAsync(Repositories.Create("Anonym"));
+        await builder.DeliverAsync(host, copy, false, CancellationToken.None);
+        string bundle = Directory.CreateDirectory(Path.Combine(host.Root, copy.Workspace.CopyFolder, "artifacts", "tests", "run 1.xcresult")).FullName;
+
+        var erased = await builder.CarryOutAsync(host, new SweepItem(SweepKind.Output, "Anonym/main/artifacts/tests/run 1.xcresult", null, "test"), CancellationToken.None);
+
+        Assert.True(erased.Value);
+        Assert.False(Directory.Exists(bundle));
+        Assert.True(Directory.Exists(Path.Combine(host.Root, copy.Workspace.CopyFolder, "artifacts", "tests")));
+    }
+
+    /// <summary>A path that leaves the copy or that a shell would read is never handed to one.</summary>
+    [Theory]
+    [InlineData("Anonym/main/../../other")]
+    [InlineData("Anonym/main/artifacts/$(touch pwned)")]
+    [InlineData("Anonym/main//etc")]
+    public async Task CarryOutAsync_AnOutputOfAPathNotPlain_IsLeft(string name)
+    {
+        var host = LocalHost();
+
+        var erased = await Builder().CarryOutAsync(host, new SweepItem(SweepKind.Output, name, null, "test"), CancellationToken.None);
+
+        Assert.False(erased.Value);
+    }
+
     [Fact]
     public async Task CarryOutAsync_AWorkspaceAndADerivedFolder_AreRemoved()
     {

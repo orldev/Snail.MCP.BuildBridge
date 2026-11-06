@@ -19,6 +19,13 @@ public enum SweepScope
 /// <summary>A workspace as a survey found it: when it was last delivered or built, and its size.</summary>
 public sealed record WorkspaceState(WorkspaceKey Key, DateTimeOffset LastUsed, long Bytes);
 
+/// <summary>What a build left inside a workspace's copy that the next build makes again: Xcode's derived data wherever <c>-derivedDataPath</c> put it, or a test bundle.</summary>
+/// <param name="Key">The workspace, as its folders are named.</param>
+/// <param name="Path">The folder, relative to the copy.</param>
+/// <param name="LastWritten">The newest write two levels down, where every build leaves a log or a product.</param>
+/// <param name="Bytes">Its size.</param>
+public sealed record OutputState(WorkspaceKey Key, string Path, DateTimeOffset LastWritten, long Bytes);
+
 /// <summary>An image a build made, as docker lists it.</summary>
 public sealed record ImageState(string Id, DateTimeOffset CreatedAt, string Size);
 
@@ -46,6 +53,9 @@ public sealed record Survey(Host Host, IReadOnlyList<WorkspaceState> Workspaces,
 
     /// <summary>The toolchain images of this server on the host, by tag.</summary>
     public IReadOnlyList<string> ToolImages { get; init; } = [];
+
+    /// <summary>Xcode's derived data and test bundles inside the workspaces' copies.</summary>
+    public IReadOnlyList<OutputState> Outputs { get; init; } = [];
 }
 
 /// <summary>What one item of a sweep is.</summary>
@@ -60,7 +70,7 @@ public enum SweepKind
     /// <summary>The images carrying the owner label older than the age named, such as <c>168h</c>; <c>all</c> for every one.</summary>
     Images,
 
-    /// <summary>Docker's build cache not used within the age named, such as <c>24h</c>; <c>all</c> for every entry.</summary>
+    /// <summary>Docker's build cache not used within the age named, such as <c>6h</c>; <c>all</c> for every entry.</summary>
     BuildCache,
 
     /// <summary>The NuGet packages, Gradle's own files, npm's cache and Playwright's browsers under the root.</summary>
@@ -73,7 +83,10 @@ public enum SweepKind
     Package,
 
     /// <summary>The logs on this machine older than the age named.</summary>
-    Logs
+    Logs,
+
+    /// <summary>Xcode's derived data or a test bundle inside a workspace's copy, named <c>repository/branch/path</c>.</summary>
+    Output
 }
 
 /// <summary>One thing a sweep removes, and why.</summary>
@@ -114,29 +127,54 @@ public static class Sweep
         _ => []
     };
 
-    /// <summary>The items a sweep after a run of <paramref name="repository"/> removes: that repository's stale workspaces and the derived data of workspaces that are gone.</summary>
+    /// <summary>The items a sweep after a run of <paramref name="repository"/> removes: that repository's stale workspaces, the quiet outputs inside its copies, the derived data of workspaces that are gone, and the build cache past its hours.</summary>
+    /// <remarks>
+    /// A branch built every day is never stale, and what its builds leave inside its copy — where a delivery never looks,
+    /// since it leaves out what git ignores — grew on with it. The build cache was pruned only once the host ran short of
+    /// room, which on a large disk is hundreds of gigabytes later.
+    /// </remarks>
     public static IReadOnlyList<SweepItem> AfterRun(Survey survey, SweepRules rules, DateTimeOffset now, string repository)
     {
-        var stale = survey.Workspaces.Where(state => string.Equals(state.Key.Repository, repository, StringComparison.OrdinalIgnoreCase) && rules.IsStale(state.LastUsed, now));
+        var stale = survey.Workspaces.Where(state => IsOf(state.Key, repository) && rules.IsStale(state.LastUsed, now)).ToList();
+        var kept = survey.Outputs.Where(output => IsOf(output.Key, repository) && !stale.Exists(state => state.Key == output.Key));
+        var items = new List<SweepItem>(stale.Select(state => Of(state, $"not built for {rules.WorkspaceDays} days")));
 
-        return [.. stale.Select(state => Of(state, $"not built for {rules.WorkspaceDays} days")), .. OrphanDerived(survey)];
+        items.AddRange(Quiet(kept, rules, now));
+        items.AddRange(OrphanDerived(survey));
+
+        if (survey.BuildCacheGigabytes > 0)
+            items.Add(CacheOf(survey, rules));
+
+        return items;
     }
 
     private static IReadOnlyList<SweepItem> Stale(Survey survey, SweepRules rules, DateTimeOffset now)
     {
-        var workspaces = survey.Workspaces.Where(state => rules.IsStale(state.LastUsed, now)).Select(state => Of(state, $"not built for {rules.WorkspaceDays} days"));
+        var stale = survey.Workspaces.Where(state => rules.IsStale(state.LastUsed, now)).ToList();
+        var kept = survey.Outputs.Where(output => !stale.Exists(state => state.Key == output.Key));
         var images = survey.Images.Where(image => now - image.CreatedAt > TimeSpan.FromDays(rules.ImageDays)).ToList();
-        var items = new List<SweepItem>(workspaces);
+        var items = new List<SweepItem>(stale.Select(state => Of(state, $"not built for {rules.WorkspaceDays} days")));
 
+        items.AddRange(Quiet(kept, rules, now));
         items.AddRange(OrphanDerived(survey));
         if (images.Count > 0)
             items.Add(new SweepItem(SweepKind.Images, $"{rules.ImageDays * 24}h", null, $"{images.Count} images older than {rules.ImageDays} days"));
         if (survey.BuildCacheGigabytes > 0)
-            items.Add(new SweepItem(SweepKind.BuildCache, $"{rules.BuildCacheHours}h", null, $"build cache not used for {rules.BuildCacheHours} hours, of {survey.BuildCacheGigabytes:0.0} GB"));
+            items.Add(CacheOf(survey, rules));
         items.AddRange(Outdated(survey, rules));
 
         return items;
     }
+
+    private static IEnumerable<SweepItem> Quiet(IEnumerable<OutputState> outputs, SweepRules rules, DateTimeOffset now) =>
+        outputs
+            .Where(output => rules.IsQuiet(output.LastWritten, now))
+            .Select(output => new SweepItem(SweepKind.Output, $"{output.Key.Repository}/{output.Key.Branch}/{output.Path}", output.Bytes, $"nothing was written into it for {rules.OutputDays} days; the next build makes it again"));
+
+    private static SweepItem CacheOf(Survey survey, SweepRules rules) =>
+        new(SweepKind.BuildCache, $"{rules.BuildCacheHours}h", null, $"build cache not used for {rules.BuildCacheHours} hours, of {survey.BuildCacheGigabytes:0.0} GB");
+
+    private static bool IsOf(WorkspaceKey key, string repository) => string.Equals(key.Repository, repository, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The versions an update left behind: SDKs no settings and no workspace name, build tools and NDKs older than the newest unless the settings name them, and toolchain images of another SDK.</summary>
     public static IReadOnlyList<SweepItem> Outdated(Survey survey, SweepRules rules)

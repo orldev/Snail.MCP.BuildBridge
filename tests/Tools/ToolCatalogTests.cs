@@ -72,6 +72,7 @@ public sealed partial class ToolCatalogTests
     [InlineData(ToolDescriptions.Clean, nameof(BuildOptions.BuildCacheHours))]
     [InlineData(ToolDescriptions.Clean, nameof(BuildOptions.JobDays))]
     [InlineData(ToolDescriptions.Clean, nameof(BuildOptions.LowDiskGigabytes))]
+    [InlineData(ToolDescriptions.Clean, nameof(BuildOptions.OutputDays))]
     public void Description_NumberItNames_IsTheDefault(string description, string option)
     {
         object? value = typeof(BuildOptions).GetProperty(option)!.GetValue(Defaults);

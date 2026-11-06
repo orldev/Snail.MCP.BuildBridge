@@ -328,6 +328,7 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
 
         string script = item.Kind switch
         {
+            SweepKind.Output when OutputOf(item.Name) is { } output => $"rm -rf {RemoteShell.Under(host, $"{output.Key.CopyFolder}/{output.Path}")} && echo removed",
             SweepKind.Derived when item.Name == WorkspaceKey.Safe(item.Name) => $"rm -rf {RemoteShell.Under(host, $"derived/{item.Name}")} && echo removed",
             SweepKind.Images when item.Name == "all" => $"docker image prune -a --force --filter label={DockerCommand.Label} >/dev/null && (docker image ls --filter label={ProvisionScripts.ImageLabel} -q | xargs docker image rm -f >/dev/null 2>&1; echo removed)",
             SweepKind.Images when item.Name.Contains(':') && AndroidPackages.IsName(item.Name.Replace(':', ';')) => $"docker image rm -f {RemoteShell.Quoted(item.Name)} >/dev/null && echo removed",
@@ -346,6 +347,16 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
             return Answer.Failed<bool>(Rsync.Reason(run));
 
         return Answer.Ok(run.Output.Contains("removed", StringComparison.Ordinal));
+    }
+
+    /// <summary>The workspace and the path an output item names, <c>repository/branch/path</c>; null when the path is not plain.</summary>
+    private static (WorkspaceKey Key, string Path)? OutputOf(string name)
+    {
+        var parts = name.Split('/', 3);
+        if (parts.Length != 3 || parts[0] != WorkspaceKey.Safe(parts[0]) || parts[1] != WorkspaceKey.Safe(parts[1]) || !OutputPath.IsPlain(parts[2]))
+            return null;
+
+        return (new WorkspaceKey(parts[0], parts[1]), parts[2]);
     }
 
     /// <inheritdoc/>

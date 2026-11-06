@@ -6,7 +6,12 @@ namespace Snail.MCP.BuildBridge.Adapters;
 /// <summary>A host's root surveyed: the script that lists what is there, and the survey read from its lines.</summary>
 public static class Surveys
 {
-    /// <summary>The script that surveys a root: a line per workspace with its marker, per derived folder, per SDK under the root and per version a workspace wishes for, per build tools and NDK, per toolchain image, per labelled image, then the build cache, the packages and the room.</summary>
+    /// <summary>The script that surveys a root: a line per workspace with its marker and per output inside its copy, per derived folder, per SDK under the root and per version a workspace wishes for, per build tools and NDK, per toolchain image, per labelled image, then the build cache, the packages and the room.</summary>
+    /// <remarks>
+    /// An output is Xcode's derived data, known by what Xcode writes only into its own — a module, compilation, index or
+    /// stat cache, or the packages and logs a resolve leaves — whatever <c>-derivedDataPath</c> named it, or a test bundle.
+    /// Every <c>.noindex</c> folder is passed over whole: they hold tens of thousands of entries and no output of another kind.
+    /// </remarks>
     public static string Script(Host host) =>
         $$$"""
         ROOT={{{RemoteShell.Root(host)}}}
@@ -16,6 +21,19 @@ public static class Surveys
           delivered=$(stat -f %m "$marker"); built=0
           [ -f "$dir/{{{WorkspaceMarker.BuiltFileName}}}" ] && built=$(stat -f %m "$dir/{{{WorkspaceMarker.BuiltFileName}}}")
           echo "s3l-ws $repo $branch $delivered $built $(du -sk "$dir" | cut -f1)"
+          copy="$dir/$repo"
+          [ -d "$copy" ] || continue
+          find "$copy" -maxdepth 6 \( -name .git -o -name node_modules \) -prune -o -type d \( -name '*.noindex' -o -name '*.xcresult' -o -name SourcePackages \) -print -prune 2>/dev/null |
+          while IFS= read -r found; do
+            case "$found" in
+              *.xcresult) echo "$found" ;;
+              */ModuleCache.noindex|*/CompilationCache.noindex|*/Index.noindex|*/SDKStatCaches.noindex) dirname "$found" ;;
+              */SourcePackages) [ -d "$(dirname "$found")/Logs" ] && dirname "$found" ;;
+            esac
+          done | sort -u | while IFS= read -r output; do
+            written=$(find "$output" -maxdepth 2 -exec stat -f %m {} + 2>/dev/null | sort -n | tail -n 1)
+            echo "s3l-output $repo $branch ${written:-0} $(du -sk "$output" | cut -f1) ${output#"$copy"/}"
+          done
         done
         for folder in "$ROOT"/derived/*/; do [ -d "$folder" ] && echo "s3l-derived $(basename "$folder")"; done
         for sdk in "$ROOT"/dotnet/sdk/*/; do [ -d "$sdk" ] && echo "s3l-sdk $(basename "$sdk")"; done
@@ -46,9 +64,25 @@ public static class Surveys
             SdksWanted = Words(lines, "s3l-sdkwanted"),
             BuildTools = Words(lines, "s3l-buildtools"),
             Ndks = Words(lines, "s3l-ndk"),
-            ToolImages = Words(lines, "s3l-toolimage")
+            ToolImages = Words(lines, "s3l-toolimage"),
+            Outputs = Outermost([.. lines.Where(parts => parts[0] == "s3l-output" && parts.Length >= 6).Select(Output).OfType<OutputState>()])
         };
     }
+
+    /// <summary>An output line: the workspace, the newest write, the size and the path, which may hold spaces.</summary>
+    private static OutputState? Output(string[] parts)
+    {
+        if (!long.TryParse(parts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out long written))
+            return null;
+
+        string path = string.Join(' ', parts[5..]);
+
+        return OutputPath.IsPlain(path) ? new OutputState(new WorkspaceKey(parts[1], parts[2]), path, DateTimeOffset.FromUnixTimeSeconds(written), Kilobytes(parts[4]) * 1024) : null;
+    }
+
+    /// <summary>The outputs no other one of the same workspace holds: the test bundles in a derived data folder's logs go with it.</summary>
+    private static IReadOnlyList<OutputState> Outermost(IReadOnlyList<OutputState> outputs) =>
+        [.. outputs.Where(output => !outputs.Any(other => other.Key == output.Key && output.Path.StartsWith($"{other.Path}/", StringComparison.Ordinal)))];
 
     private static IReadOnlyList<string> Words(List<string[]> lines, string tag) =>
         [.. lines.Where(parts => parts[0] == tag && parts.Length == 2).Select(parts => parts[1]).Distinct(StringComparer.Ordinal)];

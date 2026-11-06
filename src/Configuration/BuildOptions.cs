@@ -123,8 +123,11 @@ public sealed class BuildOptions
     /// <summary>Days an image a build made is kept.</summary>
     public int ImageDays { get; set; } = 7;
 
-    /// <summary>Hours of Docker's build cache kept when the cache is pruned.</summary>
-    public int BuildCacheHours { get; set; } = 24;
+    /// <summary>Hours of Docker's build cache kept when the cache is pruned, after every run.</summary>
+    public int BuildCacheHours { get; set; } = 6;
+
+    /// <summary>Days Xcode's derived data or a test bundle inside a workspace's copy may go unwritten before a sweep removes it.</summary>
+    public int OutputDays { get; set; } = 7;
 
     /// <summary>Free gigabytes on a host below which a sweep runs before a build.</summary>
     public double LowDiskGigabytes { get; set; } = 20;
@@ -150,7 +153,7 @@ public sealed class BuildOptions
     public bool HasKnownSync => Sync is Delivery.Rsync or Delivery.Mutagen;
 
     /// <summary>The sweep's ages as the domain carries them.</summary>
-    public SweepRules ToSweepRules() => new(WorkspaceDays, JobDays, ImageDays, BuildCacheHours, LowDiskGigabytes)
+    public SweepRules ToSweepRules() => new(WorkspaceDays, JobDays, ImageDays, BuildCacheHours, LowDiskGigabytes, OutputDays)
     {
         KeptSdk = SdkVersion,
         KeptPackages = AndroidPackages,

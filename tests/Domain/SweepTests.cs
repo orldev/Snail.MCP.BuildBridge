@@ -44,7 +44,7 @@ public sealed class SweepTests
         Assert.Equal("Gone-feat", items[1].Name);
         Assert.Equal("168h", items[2].Name);
         Assert.Contains("1 images", items[2].Reason, StringComparison.Ordinal);
-        Assert.Equal("24h", items[3].Name);
+        Assert.Equal("6h", items[3].Name);
     }
 
     /// <summary>What an update left behind goes in caches: an SDK nothing names, build tools and NDKs older than the newest unless the settings name them, toolchain images of another SDK.</summary>
@@ -78,11 +78,11 @@ public sealed class SweepTests
     }
 
     [Fact]
-    public void AfterRun_OneRepository_TakesItsStaleWorkspacesAndOrphanDerivedOnly()
+    public void AfterRun_OneRepository_TakesItsStaleWorkspacesOrphanDerivedAndTheBuildCache()
     {
         var items = Sweep.AfterRun(Of(Fresh, Stale, Other), Rules, Now, "Anonym");
 
-        Assert.Equal(["Anonym/old", "Gone-feat"], items.Select(item => item.Name));
+        Assert.Equal(["Anonym/old", "Gone-feat", "6h"], items.Select(item => item.Name));
     }
 
     [Fact]
@@ -93,4 +93,49 @@ public sealed class SweepTests
         Assert.True(plan.IsCurrent(Now.AddMinutes(9)));
         Assert.False(plan.IsCurrent(Now.AddMinutes(11)));
     }
+
+    /// <summary>
+    /// A branch built every day is never stale: what its builds left in its copy goes by its own age, and the build cache
+    /// is pruned after every run rather than once the host runs short.
+    /// </summary>
+    [Fact]
+    public void AfterRun_OfABranchBuiltEveryDay_TakesItsQuietOutputsAndTheBuildCache()
+    {
+        var quiet = new OutputState(Fresh.Key, "artifacts/app-dd", Now.AddDays(-8), 4_000);
+        var written = new OutputState(Fresh.Key, "artifacts/mac-dd", Now.AddDays(-1), 3_000);
+        var elsewhere = new OutputState(Other.Key, "artifacts/old-dd", Now.AddDays(-30), 2_000);
+        var survey = Of(Fresh, Other) with { Outputs = [quiet, written, elsewhere] };
+
+        var items = Sweep.AfterRun(survey, Rules, Now, "Anonym");
+
+        var output = Assert.Single(items, item => item.Kind == SweepKind.Output);
+        Assert.Equal("Anonym/main/artifacts/app-dd", output.Name);
+        Assert.Equal(4_000, output.Bytes);
+        Assert.Equal("6h", Assert.Single(items, item => item.Kind == SweepKind.BuildCache).Name);
+    }
+
+    /// <summary>The outputs of a workspace that goes whole are not named again.</summary>
+    [Fact]
+    public void Decide_Caches_OutputsOfAStaleWorkspace_GoWithIt()
+    {
+        var inStale = new OutputState(Stale.Key, "artifacts/app-dd", Now.AddDays(-30), 4_000);
+        var inFresh = new OutputState(Fresh.Key, "artifacts/tests/a.xcresult", Now.AddDays(-9), 1_000);
+        var survey = Of(Fresh, Stale) with { Outputs = [inStale, inFresh] };
+
+        var items = Sweep.Decide(survey, Rules, Now, SweepScope.Caches);
+
+        Assert.Equal(["Anonym/main/artifacts/tests/a.xcresult"], items.Where(item => item.Kind == SweepKind.Output).Select(item => item.Name));
+        Assert.Contains(items, item => item.Kind == SweepKind.Workspace && item.Name == "Anonym/old");
+    }
+
+    [Theory]
+    [InlineData("artifacts/tests/run 1.xcresult", true)]
+    [InlineData("artifacts/app-dd", true)]
+    [InlineData("../other", false)]
+    [InlineData("/etc", false)]
+    [InlineData("artifacts/$(x)", false)]
+    [InlineData("artifacts/a\"b", false)]
+    [InlineData("", false)]
+    public void OutputPath_IsPlain_OnlyInsideTheCopyAndUnreadByAShell(string path, bool isPlain) =>
+        Assert.Equal(isPlain, OutputPath.IsPlain(path));
 }

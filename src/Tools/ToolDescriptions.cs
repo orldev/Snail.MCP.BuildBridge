@@ -166,13 +166,14 @@ public static class ToolDescriptions
         Give a host its room back, in two calls: first a plan of a scope is decided and shown under a planId, then that
         plan, and only it, is carried out when called again with the planId. Nothing on a host is the only copy of
         anything, so a sweep erases. The scopes are {Scopes}: one workspace (the copy at path, or repository and
-        branch), every workspace of a repository, what has gone stale — workspaces not built for 14 days, derived
-        data of workspaces that are gone, images older than 7 days, build cache not used for 24 hours, logs older
-        than 30 days, and the versions an update left behind: SDKs no settings and no workspace's global.json name,
-        build tools and NDKs older than the newest unless the settings name them, toolchain images the settings do
-        not name — or everything under the root but the SDK. A plan is kept 10 minutes. build_run sweeps by itself:
-        a repository's stale workspaces after each run, and the caches before one when the host has less than 20 GB
-        free.
+        branch), every workspace of a repository, what has gone stale — workspaces not built for 14 days, Xcode's
+        derived data and test bundles inside a copy nothing wrote into for 7 days, derived data of workspaces that
+        are gone, images older than 7 days, build cache not used for 6 hours, logs older than 30 days, and the
+        versions an update left behind: SDKs no settings and no workspace's global.json name, build tools and NDKs
+        older than the newest unless the settings name them, toolchain images the settings do not name — or
+        everything under the root but the SDK. A plan is kept 10 minutes. build_run sweeps by itself: after each run
+        a repository's stale workspaces, the quiet outputs inside its copies and the build cache past its hours, and
+        the caches before one when the host has less than 20 GB free.
         """;
 
     /// <summary>The scope parameter of build_clean.</summary>

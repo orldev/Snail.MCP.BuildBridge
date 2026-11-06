@@ -7,7 +7,13 @@ namespace Snail.MCP.BuildBridge.Adapters;
 public static class ProvisionScripts
 {
     /// <summary>The script that provisions a host: the folders, the SDK, the workloads, the feeds, XcodeGen, the Android toolchain, the images, and a look at Xcode, Docker, Rosetta and sleep.</summary>
-    /// <remarks>A second SDK goes beside the first with the host's unversioned files left alone: overwriting the dotnet muxer in place leaves macOS killing it, which the supply of an SDK during a run found on 2026-11-03.</remarks>
+    /// <remarks>
+    /// A second SDK goes beside the first with the host's unversioned files left alone: overwriting the dotnet muxer in
+    /// place leaves macOS killing it, which the supply of an SDK during a run found on 2026-11-03. With several SDKs
+    /// under the root, the one the settings name is looked for by its folder, not by what <c>dotnet --version</c> picks,
+    /// which is the newest; and the workloads are listed and installed with that SDK, through a global.json beside it
+    /// that the script runs in — found on 2026-11-06, when a run had put 10.0.403 beside 10.0.302.
+    /// </remarks>
     public static string Of(Host host, BuilderManifest manifest)
     {
         string root = RemoteShell.Root(host);
@@ -17,20 +23,22 @@ public static class ProvisionScripts
         string feeds = RemoteShell.Quoted(string.Join(' ', manifest.Feeds));
         string images = string.Concat(manifest.Images.Select(image => ImageScript(image, manifest.SdkVersion)));
         string android = manifest.HasAndroid ? AndroidScript(manifest) : string.Empty;
+        string node = manifest.HasNode ? NodeScript(manifest) : string.Empty;
 
         return $$$"""
             ROOT={{{root}}}
             mkdir -p {{{folders}}} && echo "s3l-step folders 1 $ROOT" || echo "s3l-step folders 0 could not create the folders under $ROOT"
             SDK={{{sdk}}}
             if [ -n "$SDK" ]; then
-              have="$("$ROOT/dotnet/dotnet" --version 2>/dev/null)"
+              have=""; [ -d "$ROOT/dotnet/sdk/$SDK" ] && have="$SDK"
               if [ "$have" != "$SDK" ]; then
                 skip=""; [ -x "$ROOT/dotnet/dotnet" ] && skip=--skip-non-versioned-files
                 curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$ROOT/bin/dotnet-install.sh" && bash "$ROOT/bin/dotnet-install.sh" --version "$SDK" --install-dir "$ROOT/dotnet" --no-path $skip
-                have="$("$ROOT/dotnet/dotnet" --version 2>/dev/null)"
+                [ -d "$ROOT/dotnet/sdk/$SDK" ] && have="$SDK"
               fi
               if [ "$have" = "$SDK" ]; then echo "s3l-step dotnet 1 $have in $ROOT/dotnet"; else echo "s3l-step dotnet 0 dotnet-install.sh did not leave $SDK in $ROOT/dotnet"; fi
               DOTNET="$ROOT/dotnet/dotnet"
+              printf '{ "sdk": { "version": "%s" } }\n' "$SDK" > "$ROOT/dotnet/global.json" && cd "$ROOT/dotnet"
             else
               have="$(dotnet --version 2>/dev/null)"
               if [ -n "$have" ]; then echo "s3l-step dotnet 1 $have, the host's own"; else echo "s3l-step dotnet 0 no dotnet on the host and none asked for: set SdkVersion"; fi
@@ -77,6 +85,7 @@ public static class ProvisionScripts
               if arch -x86_64 /usr/bin/true >/dev/null 2>&1; then echo "s3l-step rosetta 1 x64 programs run"; else echo "s3l-step rosetta 0 {{{Messages.InstallRosetta}}}"; fi
             fi
             {{{android}}}
+            {{{node}}}
             cat > "$ROOT/{{{ContainerCommand.NuGetConfig}}}" <<'S3L_NUGET'
             {{{ContainerNuGetConfig(manifest.Feeds)}}}
             S3L_NUGET
@@ -142,6 +151,29 @@ public static class ProvisionScripts
             if [ -z "$missing" ]; then echo "s3l-step android 1 $PACKAGES in $ROOT/android"; else echo "s3l-step android 0 not installed:$missing; the log says why"; fi
           fi
         fi
+        """;
+
+    /// <summary>The lines that put Node under the root: the release tarball into node, pointed at by node/current, checked against the SHA-256 the manifest names; the folder is removed and made anew, never written over.</summary>
+    public static string NodeScript(BuilderManifest manifest) =>
+        $$$"""
+        NODE={{{RemoteShell.Quoted(manifest.NodeVersion)}}}
+        NODE_SHA={{{RemoteShell.Quoted(manifest.NodeSha256)}}}
+        have="$("$ROOT/node/current/bin/node" --version 2>/dev/null | sed 's/^v//')"
+        reason="Node $NODE did not install under $ROOT/node; the log says why"
+        if [ "$have" != "$NODE" ] && [ "$(uname -m)" != arm64 ]; then reason="{{{Messages.NodeByHand}}}"
+        elif [ "$have" != "$NODE" ]; then
+          rm -rf "$ROOT/node"; mkdir -p "$ROOT/node"
+          if curl -fsSL {{{RemoteShell.Quoted(BuilderManifests.NodeUrlOf(manifest.NodeVersion))}}} -o "$ROOT/node/node.tar.gz"; then
+            if [ -z "$NODE_SHA" ] || echo "$NODE_SHA  $ROOT/node/node.tar.gz" | shasum -a 256 -c - >/dev/null 2>&1; then
+              tar -xzf "$ROOT/node/node.tar.gz" -C "$ROOT/node"
+              home="$(find "$ROOT/node" -maxdepth 1 -type d -name 'node-v*' | head -n 1)"
+              [ -n "$home" ] && ln -sfn "$home" "$ROOT/node/current"
+            else echo "node.tar.gz does not match the SHA-256 the settings name"; fi
+            rm -f "$ROOT/node/node.tar.gz"
+          fi
+          have="$("$ROOT/node/current/bin/node" --version 2>/dev/null | sed 's/^v//')"
+        fi
+        if [ "$have" = "$NODE" ]; then echo "s3l-step node 1 Node $have in $ROOT/node"; else echo "s3l-step node 0 $reason"; fi
         """;
 
     /// <summary>The lines that build one image: its Dockerfile written under the root, then docker build unless the tag is there already from this very Dockerfile.</summary>

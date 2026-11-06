@@ -49,13 +49,28 @@ public sealed record BuilderManifest(string SdkVersion, IReadOnlyList<string> Wo
 
     /// <summary>The SDK packages sdkmanager installs, as it names them.</summary>
     public IReadOnlyList<string> AndroidPackages { get; init; } = DefaultAndroidPackages;
+
+    /// <summary>The Node release the settings name unless they say otherwise: the current LTS on 2026-11-06.</summary>
+    public const string DefaultNodeVersion = "26.13.0";
+
+    /// <summary>The SHA-256 of that release's macOS arm64 tarball, as nodejs.org publishes it in SHASUMS256.txt, read on 2026-11-06.</summary>
+    public const string DefaultNodeSha256 = "d38bd5e5a2ddce6bbb5ce45e46e208337da4d51fffe611e567fd32073d6439f6";
+
+    /// <summary>Whether Node goes under the root, for the npm kind and for what a build runs through npm.</summary>
+    public bool HasNode { get; init; } = true;
+
+    /// <summary>The Node release fetched, as nodejs.org names it without the v: <c>26.13.0</c>.</summary>
+    public string NodeVersion { get; init; } = DefaultNodeVersion;
+
+    /// <summary>The SHA-256 of that release's macOS arm64 tarball, checked before it is unpacked; empty checks nothing.</summary>
+    public string NodeSha256 { get; init; } = DefaultNodeSha256;
 }
 
 /// <summary>The folders every root has, and the rest of what a manifest knows that is not a parameter.</summary>
 public static class BuilderManifests
 {
     /// <summary>The folders every root has.</summary>
-    public static IReadOnlyList<string> Folders { get; } = ["bin", "workspaces", "jobs", "nuget", "derived", "feeds", "images", "containers", "jdk", "android", "gradle"];
+    public static IReadOnlyList<string> Folders { get; } = ["bin", "workspaces", "jobs", "nuget", "derived", "feeds", "images", "containers", "jdk", "android", "gradle", "node", "npm", "playwright"];
 
     /// <summary>Where a XcodeGen release is fetched from, by version.</summary>
     public static string XcodeGenUrlOf(string version) => $"https://github.com/yonaskolb/XcodeGen/releases/download/{version}/xcodegen.zip";
@@ -69,6 +84,9 @@ public static class BuilderManifests
 
         return $"https://github.com/adoptium/temurin{major}-binaries/releases/download/{tag}/{file}";
     }
+
+    /// <summary>Where a Node release for macOS arm64 is fetched from, by the version without the v.</summary>
+    public static string NodeUrlOf(string version) => $"https://nodejs.org/dist/v{version}/node-v{version}-darwin-arm64.tar.gz";
 
     /// <summary>Where the Android command-line tools for macOS are fetched from, by build.</summary>
     public static string AndroidToolsUrlOf(string build) => $"https://dl.google.com/android/repository/commandlinetools-mac-{build}_latest.zip";

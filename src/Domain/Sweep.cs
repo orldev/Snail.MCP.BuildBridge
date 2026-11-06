@@ -28,7 +28,7 @@ public sealed record ImageState(string Id, DateTimeOffset CreatedAt, string Size
 /// <param name="Derived">The names of the derived data folders, <c>&lt;repository&gt;-&lt;branch&gt;</c>.</param>
 /// <param name="Images">Every image carrying the owner label.</param>
 /// <param name="BuildCacheGigabytes">Docker's build cache.</param>
-/// <param name="PackagesGigabytes">The NuGet packages and Gradle's own files under the root.</param>
+/// <param name="PackagesGigabytes">The NuGet packages, Gradle's own files, npm's cache and Playwright's browsers under the root.</param>
 /// <param name="FreeGigabytes">The room left under the host's home.</param>
 public sealed record Survey(Host Host, IReadOnlyList<WorkspaceState> Workspaces, IReadOnlyList<string> Derived, IReadOnlyList<ImageState> Images, double BuildCacheGigabytes, double PackagesGigabytes, double? FreeGigabytes)
 {
@@ -63,7 +63,7 @@ public enum SweepKind
     /// <summary>Docker's build cache not used within the age named, such as <c>24h</c>; <c>all</c> for every entry.</summary>
     BuildCache,
 
-    /// <summary>The NuGet packages and Gradle's own files under the root.</summary>
+    /// <summary>The NuGet packages, Gradle's own files, npm's cache and Playwright's browsers under the root.</summary>
     Packages,
 
     /// <summary>A .NET SDK under the root, by version, that no settings and no workspace name any more.</summary>
@@ -169,7 +169,7 @@ public static class Sweep
         if (survey.BuildCacheGigabytes > 0)
             items.Add(new SweepItem(SweepKind.BuildCache, "all", null, $"build cache of {survey.BuildCacheGigabytes:0.0} GB"));
         if (survey.PackagesGigabytes > 0)
-            items.Add(new SweepItem(SweepKind.Packages, "nuget", (long)(survey.PackagesGigabytes * 1024 * 1024 * 1024), "the packages and Gradle's files under the root; a restore brings them back"));
+            items.Add(new SweepItem(SweepKind.Packages, "nuget", (long)(survey.PackagesGigabytes * 1024 * 1024 * 1024), "the packages, Gradle's files, npm's cache and Playwright's browsers under the root; a restore brings them back"));
 
         return items;
     }

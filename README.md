@@ -30,7 +30,7 @@ dotnet publish src -c Release -r osx-arm64 -p:SnailMcpInstall=true    # ~/.s3l-m
 | --- | --- |
 | `build_hosts` | The hosts and what each can do right now: reachable, its toolchains with versions, its room. Changes nothing. |
 | `build_provision` | Makes a host ready as a job: the root and its folders, the SDK and workloads under the root, the feeds, XcodeGen, the JDK and the Android SDK with its NDK, the images of the container kinds; names what a person installs or accepts — Xcode, OrbStack, Rosetta, sleep, the Android licences. |
-| `build_run` | Delivers the copy and runs `dotnet`, `xcodebuild`, `docker` or the repository's `gradlew` in its workspace as a job — or `dotnet` inside the host's Linux or Android image, or a script of the repository; answers the exit code, what the tests said, the log. |
+| `build_run` | Delivers the copy and runs `dotnet`, `xcodebuild`, `docker`, `npm` or the repository's `gradlew` in its workspace as a job — or `dotnet` inside the host's Linux or Android image, or a script of the repository; answers the exit code, what the tests said, the log. |
 | `build_logs` | The end of a run's log on this machine, while it runs or after. |
 | `build_fetch` | Named paths of a workspace brought back: test results, a simulator bundle, a package. |
 | `build_cancel` | Stops a running job, on the host too. |
@@ -75,7 +75,14 @@ result once it ends.
      [Snail.MCP.CleanUp](../Snail.MCP.CleanUp) reads; a compose stand is the project `s3l-<repository>-<branch>`.
    - the `android` kind runs `dotnet` on the host, with the JDK, the Android SDK and its NDK under the root named
      through `JAVA_HOME`, `ANDROID_HOME` and `ANDROID_NDK_HOME`, which dotnet's Android targets read; `gradle` runs
-     the repository's `gradlew` from its root the same way, with Gradle's own files under `gradle/` of the root.
+     the repository's `gradlew` from its root the same way, with Gradle's own files under `gradle/` of the root;
+     `npm` runs `npm` with the root's Node — `ci`, `test`, `run build`, `exec -- playwright install` — for the tests
+     of a site or an interface.
+   - the command's environment carries what `environment` assigns, `NAME=value` words for what is no secret, and the
+     secrets the settings name for the repository. A secret lives in `config.json` or in this machine's keychain and
+     reaches the host's shell on its standard input, for the run alone: never a tool's argument, a job, the log or a
+     file on the host; `build_diagnose` says which names a run gets, never their values. A container run gets them by
+     name, `-e NAME`, from that shell.
    - the `linux` kind runs `dotnet` inside the host's `s3l-build-dotnet` image, with the workspace mounted at `/work`,
      the root's packages at `/root/.nuget/packages` and the feeds at `/feeds`, named by a NuGet configuration
      provisioning wrote under `containers/`: Linux targets, Native AOT for Linux and tests on Linux. A host without the
@@ -110,6 +117,8 @@ what is wrong when a probe does not reach it. On it:
   `~/.s3l-build/images` — once; an image already there is kept, and a sweep of stale images leaves them alone. Where
   Xcode is, it also puts [XcodeGen](https://github.com/yonaskolb/XcodeGen) under `~/.s3l-build/xcodegen`, from the
   release zip the settings name, checked against its SHA-256 — rather than Homebrew, which would want a password.
+  [Node](https://nodejs.org) goes under the root the same way, from the release tarball the settings name into
+  `node/`, pointed at by `node/current`, with npm's cache under `npm/` and Playwright's browsers under `playwright/`.
   The Android toolchain goes under the root the same way: a [Temurin](https://adoptium.net) JDK into `jdk/`, pointed
   at by `jdk/current`, and the command-line tools into `android/`, each from the release the settings name and
   checked against its SHA-256; `sdkmanager` then installs the packages the settings name — the platform tools, the
@@ -147,6 +156,8 @@ A host that is this machine — `localhost` — is worked without ssh, straight 
 | `Feeds` | none | NuGet feeds of this machine mirrored to the host and added to its sources by name. |
 | `Images` | `dotnet` | The images provisioning builds for the container kinds; `android` names the Android image, for a host without the toolchain; an empty list builds none. |
 | `HasAndroid`, `JdkVersion`, `JdkSha256` | `true`, `21.0.13+9`, its SHA-256 | Whether provisioning puts the Android toolchain under the root, which Temurin release, and the checksum its macOS arm64 tarball must match; an empty checksum checks nothing. |
+| `HasNode`, `NodeVersion`, `NodeSha256` | `true`, `26.13.0`, its SHA-256 | Whether provisioning puts Node under the root, which release, and the checksum its macOS arm64 tarball must match; an empty checksum checks nothing. |
+| `Secrets` | none | Each a `Name`, a `Value` or the `Keychain` service of a generic password on this machine (one of the two), and a `Repository` whose runs get it, every repository when empty. |
 | `AndroidToolsBuild`, `AndroidToolsSha256`, `AndroidPackages` | `11076708`, its SHA-256, the platform tools, platforms 36 and 35, build tools 36.0.0, NDK r28c | The build of the command-line tools, the checksum its macOS zip must match, and the packages `sdkmanager` installs, as it names them. |
 | `HasXcodeGen`, `XcodeGenVersion`, `XcodeGenSha256` | `true`, `2.46.0`, its SHA-256 | Whether provisioning puts XcodeGen under the root of a host that has Xcode, which release, and the checksum its zip must match; an empty checksum checks nothing. |
 | `Sync` | `rsync` | What carries a copy: `rsync`, a mirror before every run, or `mutagen`, a session per workspace that keeps it mirrored; `Mutagen` names the program. |
@@ -164,7 +175,7 @@ A host that is this machine — `localhost` — is worked without ssh, straight 
 | images a run made | the label `snail.owner` | older than `ImageDays` in `caches`; all in `everything` |
 | the images of the container kinds | the label `snail.image` | `everything` only |
 | the build cache | shared | entries not used for `BuildCacheHours` in `caches`; all in `everything` |
-| the packages and Gradle's files under the root | under the root | `everything` only |
+| the packages, Gradle's files, npm's cache and Playwright's browsers under the root | under the root | `everything` only |
 | an SDK under the root | under the root | no settings and no workspace's `global.json` name it; `caches` |
 | build tools and NDKs | under the root | older than the newest, unless the settings name them; `caches` |
 | toolchain images the settings do not name | the label `snail.image` and the tag | `caches` |

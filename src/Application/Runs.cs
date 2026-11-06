@@ -8,15 +8,23 @@ namespace Snail.MCP.BuildBridge.Application;
 
 /// <summary>A build of a working copy on a host: the copy delivered, the feeds mirrored, the command run in the workspace, the log read for what the tests said.</summary>
 /// <remarks>One workspace takes one run at a time, through <see cref="WorkspaceTurns"/>: a run that finds the workspace busy waits its turn, and says so in its progress.</remarks>
-public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs logs, Sweeps sweeps, WorkspaceTurns turns, IOptions<BuildOptions> options)
+public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs logs, Sweeps sweeps, WorkspaceTurns turns, ISecrets secrets, IOptions<BuildOptions> options)
 {
 
-    /// <summary>Runs <paramref name="kind"/>'s program with <paramref name="arguments"/> in the workspace of the copy <paramref name="path"/> lies in, on the host named or the first, with the Android SDK packages <paramref name="needs"/> names put under its root first.</summary>
-    public async Task<Answer<BuildReport>> RunAsync(string path, BuildKind kind, IReadOnlyList<string> arguments, IReadOnlyList<string> needs, string? host, IProgress<JobProgress> progress, CancellationToken cancellationToken)
+    /// <summary>Runs <paramref name="kind"/>'s program with <paramref name="arguments"/> in the workspace of the copy <paramref name="path"/> lies in, on the host named or the first, with the Android SDK packages <paramref name="needs"/> names put under its root first, and the variables <paramref name="environment"/> assigns and the secrets of the repository in the command's environment.</summary>
+    public async Task<Answer<BuildReport>> RunAsync(string path, BuildKind kind, IReadOnlyList<string> arguments, IReadOnlyList<string> needs, IReadOnlyList<string> environment, string? host, IProgress<JobProgress> progress, CancellationToken cancellationToken)
     {
         var copy = await copies.ReadAsync(path, cancellationToken);
         if (copy.Value is not { } found)
             return Answer.Failed<BuildReport>(copy.Error!, copy.Hint);
+
+        var (named, misnamed) = Variables.Parsed(environment);
+        if (misnamed is not null)
+            return Answer.Failed<BuildReport>(Messages.NotAVariable(misnamed));
+        var secret = await secrets.ForAsync(found.Repository, cancellationToken);
+        if (secret.Value is not { } hidden)
+            return Answer.Failed<BuildReport>(secret.Error!, secret.Hint);
+        var variables = Merged(named, hidden);
 
         if (kind == BuildKind.Script && ScriptOf(found, arguments) is { Error: { } wrong } refused)
             return Answer.Failed<BuildReport>(wrong, refused.Hint);
@@ -48,7 +56,7 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
             if (swept.Count > 0)
                 progress.Report(new JobProgress(0, 5, $"swept {state.Host.Name}, which was short of room"));
 
-            var ran = await RanAsync(state, image, found, kind, arguments, progress, cancellationToken);
+            var ran = await RanAsync(state, image, found, kind, arguments, variables, progress, cancellationToken);
             if (ran.Value is not { } report)
                 return ran;
 
@@ -56,6 +64,16 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
 
             return Answer.Ok(report with { Swept = [.. swept, .. after], Supplied = [.. supplied, .. report.Supplied] });
         }
+    }
+
+    /// <summary>The run's variables: what the call assigned, with the secrets of this machine over them, so a call never stands in for a secret.</summary>
+    private static Dictionary<string, string> Merged(IReadOnlyDictionary<string, string> named, IReadOnlyDictionary<string, string> hidden)
+    {
+        var variables = new Dictionary<string, string>(named, StringComparer.Ordinal);
+        foreach (var (name, value) in hidden)
+            variables[name] = value;
+
+        return variables;
     }
 
     /// <summary>What a run puts under the root before it starts: the packages the call named, and the SDK the copy's global.json wishes for when none under the root meets it.</summary>
@@ -98,7 +116,7 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
         }
     }
 
-    private async Task<Answer<BuildReport>> RanAsync(HostState state, string? image, LocalCopy copy, BuildKind kind, IReadOnlyList<string> arguments, IProgress<JobProgress> progress, CancellationToken cancellationToken)
+    private async Task<Answer<BuildReport>> RanAsync(HostState state, string? image, LocalCopy copy, BuildKind kind, IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string> variables, IProgress<JobProgress> progress, CancellationToken cancellationToken)
     {
         var host = state.Host;
         if (image is not null && state.Home is null)
@@ -117,13 +135,13 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
                 return Answer.Failed<BuildReport>(mirrored.Error!, mirrored.Hint);
         }
 
-        var shaped = Shaped(kind, image, arguments, copy.Workspace, state.Home is { } home ? host.RootOn(home) : string.Empty, options.Value.SdkVersion);
+        var shaped = Shaped(kind, image, arguments, copy.Workspace, state.Home is { } home ? host.RootOn(home) : string.Empty, options.Value.SdkVersion, [.. variables.Keys]);
         string log = logs.New(ToolWord(kind));
         var timeout = TimeSpan.FromSeconds(options.Value.RunSeconds);
         if (kind == BuildKind.Xcode && SpecFolderOf(copy, shaped) is { } folder)
         {
             progress.Report(new JobProgress(3, 5, $"generating the project from {folder}/{XcodeCommand.Spec}"));
-            var generated = await builder.ExecuteAsync(host, copy.Workspace, XcodeCommand.Generation(folder), log, timeout, cancellationToken);
+            var generated = await builder.ExecuteAsync(host, copy.Workspace, XcodeCommand.Generation(folder), variables, log, timeout, cancellationToken);
             if (generated.Value is not { } generation)
                 return Answer.Failed<BuildReport>(generated.Error!, generated.Hint);
             if (!generation.IsSuccess)
@@ -147,7 +165,7 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
             List<string> command = kind.Program(image) is { } program ? [program, .. shaped] : [.. shaped];
             progress.Report(new JobProgress(4, 5, $"running {string.Join(' ', command)}; log {log}"));
 
-            var executed = await builder.ExecuteAsync(host, copy.Workspace, command, log, timeout, cancellationToken);
+            var executed = await builder.ExecuteAsync(host, copy.Workspace, command, variables, log, timeout, cancellationToken);
             if (executed.Value is not { } execution)
                 return Answer.Failed<BuildReport>(executed.Error!, executed.Hint);
 
@@ -155,7 +173,7 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
             if (supplied.Count > 0)
             {
                 progress.Report(new JobProgress(4, 5, $"running {string.Join(' ', command)} again, with {string.Join(' ', supplied)} in place"));
-                executed = await builder.ExecuteAsync(host, copy.Workspace, command, log, timeout, cancellationToken);
+                executed = await builder.ExecuteAsync(host, copy.Workspace, command, variables, log, timeout, cancellationToken);
                 if (executed.Value is not { } again)
                     return Answer.Failed<BuildReport>(executed.Error!, executed.Hint);
 
@@ -190,10 +208,10 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
     }
 
     /// <summary>The arguments as the kind shapes them for the workspace: docker run of <paramref name="image"/> around dotnet when the run is in a container; otherwise derived data under the root for xcodebuild, the owner label and the project for docker, the script's path for a script, and as given for the rest.</summary>
-    public static IReadOnlyList<string> Shaped(BuildKind kind, string? image, IReadOnlyList<string> arguments, WorkspaceKey key, string root, string sdkVersion)
+    public static IReadOnlyList<string> Shaped(BuildKind kind, string? image, IReadOnlyList<string> arguments, WorkspaceKey key, string root, string sdkVersion, IReadOnlyCollection<string> variables)
     {
         if (image is not null)
-            return ContainerCommand.Shaped(kind, arguments, key, root, sdkVersion);
+            return ContainerCommand.Shaped(kind, arguments, key, root, sdkVersion, variables);
 
         return kind switch
         {

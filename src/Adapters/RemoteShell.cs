@@ -24,7 +24,8 @@ public sealed class RemoteShell(IOptions<BuildOptions> options)
     /// The lines every script starts with: the root's programs first on the path, then the places a Mac keeps programs a
     /// person installed — OrbStack's docker, Homebrew — which a non-interactive shell does not look in, the root's SDK and
     /// packages for dotnet, dotnet's words in English, and the Android toolchain under the root where it is: the JDK,
-    /// the SDK with its tools, the newest NDK and Gradle's own folder, named the way gradle and dotnet look for them.
+    /// the SDK with its tools, the newest NDK and Gradle's own folder, named the way gradle and dotnet look for them, and
+    /// Node with npm's cache and Playwright's browsers under the root too.
     /// </summary>
     public static string Prelude(Host host) =>
         $"""
@@ -34,6 +35,7 @@ public sealed class RemoteShell(IOptions<BuildOptions> options)
         [ -x {Under(host, "jdk/current/bin/java")} ] && export JAVA_HOME={Under(host, "jdk/current")} PATH={Under(host, "jdk/current/bin")}:"$PATH"
         [ -x {Under(host, "android/cmdline-tools/latest/bin/sdkmanager")} ] && export ANDROID_HOME={Under(host, "android")} ANDROID_SDK_ROOT={Under(host, "android")} GRADLE_USER_HOME={Under(host, "gradle")} PATH={Under(host, "android/cmdline-tools/latest/bin")}:{Under(host, "android/platform-tools")}:"$PATH"
         S3L_NDK="$(ls {Under(host, "android/ndk")} 2>/dev/null | sort -V | tail -n 1)"; [ -n "$S3L_NDK" ] && export ANDROID_NDK_HOME={Under(host, "android/ndk")}/"$S3L_NDK"
+        [ -x {Under(host, "node/current/bin/node")} ] && export PATH={Under(host, "node/current/bin")}:"$PATH" npm_config_cache={Under(host, "npm")} PLAYWRIGHT_BROWSERS_PATH={Under(host, "playwright")}
 
         """;
 
@@ -60,6 +62,10 @@ public sealed class RemoteShell(IOptions<BuildOptions> options)
         host.IsLocal
             ? Path.Combine(LocalRoot(host), relative)
             : $"{host.Address}:{host.Root}/{relative}";
+
+    /// <summary>The lines a POSIX shell reads to take <paramref name="variables"/> into its environment, each value quoted for it; they go to the shell on its standard input, never on its command line.</summary>
+    public static string Exports(IReadOnlyDictionary<string, string> variables) =>
+        string.Concat(variables.Select(variable => $"export {variable.Key}={Quoted(variable.Value)}\n"));
 
     /// <summary>A word quoted for a POSIX shell.</summary>
     public static string Quoted(string word) => $"'{word.Replace("'", "'\\''", StringComparison.Ordinal)}'";

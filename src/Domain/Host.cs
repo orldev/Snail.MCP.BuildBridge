@@ -29,7 +29,10 @@ public enum Capability
     Docker,
 
     /// <summary>The Android toolchain under the root — a JDK and the Android SDK with its NDK: gradle, and dotnet's Android targets on the host itself.</summary>
-    Android
+    Android,
+
+    /// <summary>Node under the root, with npm: tests of a site or an interface, and what a build runs through npm.</summary>
+    Node
 }
 
 /// <summary>One toolchain as a probe found it: present with its version, or absent.</summary>

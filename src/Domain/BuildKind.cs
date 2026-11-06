@@ -21,6 +21,9 @@ public enum BuildKind
     /// <summary>The repository's gradle wrapper: an Android app of its own, built with the toolchain under the root.</summary>
     Gradle,
 
+    /// <summary>The npm command: ci, test, run build, exec, with Node under the root.</summary>
+    Npm,
+
     /// <summary>A script of the repository, run as it is: what a build needs that no one program says, such as packing a core into a framework.</summary>
     Script
 }
@@ -36,6 +39,7 @@ public static class BuildKinds
         BuildKind.Docker or BuildKind.Linux => [Capability.Docker],
         BuildKind.Android => [Capability.Android, Capability.Docker],
         BuildKind.Gradle => [Capability.Android],
+        BuildKind.Npm => [Capability.Node],
         BuildKind.Script => [],
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
     };
@@ -47,6 +51,7 @@ public static class BuildKinds
         BuildKind.Xcode => "xcodebuild",
         BuildKind.Docker => "docker",
         BuildKind.Gradle => GradleCommand.Program,
+        BuildKind.Npm => "npm",
         BuildKind.Linux => throw new ArgumentOutOfRangeException(nameof(kind), kind, "The kind runs in a container, not on the host."),
         BuildKind.Script => null,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)

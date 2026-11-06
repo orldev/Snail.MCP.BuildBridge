@@ -117,7 +117,7 @@ public sealed class SshBuilderTests
         await builder.DeliverAsync(host, copy, false, CancellationToken.None);
         string log = Path.Combine(TestFolder.Create(), "run.log");
 
-        var answer = await builder.ExecuteAsync(host, copy.Workspace, ["sh", "-c", "pwd; cat README.md; echo oops >&2; exit 4"], log, TimeSpan.FromSeconds(10), CancellationToken.None);
+        var answer = await builder.ExecuteAsync(host, copy.Workspace, ["sh", "-c", "pwd; cat README.md; echo oops >&2; exit 4"], new Dictionary<string, string>(), log, TimeSpan.FromSeconds(10), CancellationToken.None);
 
         var execution = Assert.IsType<Execution>(answer.Value);
         Assert.Equal(4, execution.ExitCode);
@@ -139,7 +139,7 @@ public sealed class SshBuilderTests
         string log = Path.Combine(TestFolder.Create(), "run.log");
         string witness = Path.Combine(TestFolder.Create(), "still-running");
 
-        var answer = await builder.ExecuteAsync(host, copy.Workspace, ["sh", "-c", $"sleep 30; touch '{witness}'"], log, TimeSpan.FromSeconds(1), CancellationToken.None);
+        var answer = await builder.ExecuteAsync(host, copy.Workspace, ["sh", "-c", $"sleep 30; touch '{witness}'"], new Dictionary<string, string>(), log, TimeSpan.FromSeconds(1), CancellationToken.None);
 
         Assert.True(answer.Value!.IsTimedOut);
         Assert.False(File.Exists(Path.Combine(host.Root, copy.Workspace.Folder, ".s3l-build.pid")));
@@ -170,6 +170,23 @@ public sealed class SshBuilderTests
 
         Assert.Null(answer.Value);
         Assert.Contains("not a path inside the workspace", answer.Error, StringComparison.Ordinal);
+    }
+
+    /// <summary>The run's variables reach the command's environment through the shell's standard input: the command sees them, the command line never carried them.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WithVariables_PutsThemInTheCommandsEnvironment()
+    {
+        var host = LocalHost();
+        var copy = await CopyAsync(Repositories.Create());
+        var builder = Builder();
+        await builder.DeliverAsync(host, copy, false, CancellationToken.None);
+        string log = Path.Combine(TestFolder.Create(), "run.log");
+        var variables = new Dictionary<string, string> { ["TOKEN"] = "s3cr3t it's", ["STAGE"] = "Testing" };
+
+        var answer = await builder.ExecuteAsync(host, copy.Workspace, ["sh", "-c", "printf '%s|%s\\n' \"$TOKEN\" \"$STAGE\""], variables, log, TimeSpan.FromSeconds(10), CancellationToken.None);
+
+        Assert.Equal(0, answer.Value!.ExitCode);
+        Assert.Contains("s3cr3t it's|Testing", await File.ReadAllTextAsync(log), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -219,7 +236,7 @@ public sealed class SshBuilderTests
         string witness = Path.Combine(TestFolder.Create(), "still-running");
         using var cancelling = new CancellationTokenSource(TimeSpan.FromSeconds(1));
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => builder.ExecuteAsync(host, copy.Workspace, ["sh", "-c", $"sleep 30; touch '{witness}'"], log, TimeSpan.FromSeconds(60), cancelling.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => builder.ExecuteAsync(host, copy.Workspace, ["sh", "-c", $"sleep 30; touch '{witness}'"], new Dictionary<string, string>(), log, TimeSpan.FromSeconds(60), cancelling.Token));
 
         Assert.False(File.Exists(Path.Combine(host.Root, copy.Workspace.Folder, ".s3l-build.pid")));
         await Task.Delay(TimeSpan.FromSeconds(2));
@@ -369,7 +386,7 @@ public sealed class SshBuilderTests
 
         var state = await builder.ProbeAsync(host, CancellationToken.None);
         var delivered = await builder.DeliverAsync(host, copy, false, CancellationToken.None);
-        var ran = await builder.ExecuteAsync(host, copy.Workspace, ["cat", "README.md"], log, TimeSpan.FromSeconds(30), CancellationToken.None);
+        var ran = await builder.ExecuteAsync(host, copy.Workspace, ["cat", "README.md"], new Dictionary<string, string>(), log, TimeSpan.FromSeconds(30), CancellationToken.None);
         var removed = await builder.RemoveAsync(host, copy.Workspace, CancellationToken.None);
 
         Assert.True(state.IsReachable, state.Note);

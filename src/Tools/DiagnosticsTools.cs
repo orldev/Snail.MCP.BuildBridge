@@ -37,6 +37,7 @@ public sealed class DiagnosticsTools(Hosts hosts, IPrograms programs, IOptions<B
                 ["mutagen"] = await VersionAsync(settings.Mutagen, ["version"], cancellationToken)
             },
             ["sync"] = settings.Sync,
+            ["secrets"] = new JsonArray([.. settings.Secrets.Select(secret => (JsonNode)new JsonObject { ["name"] = secret.Name, ["source"] = secret.Source, ["repository"] = secret.Repository })]),
             ["dataDirectory"] = ServerFolders.DataDirectory(BuildSettings.Name),
             ["settingsFile"] = ServerSettings.FileOf(BuildSettings.Name)
         };

@@ -102,6 +102,18 @@ public sealed class BuildOptions
     /// <summary>The SDK packages sdkmanager installs, as it names them: platform-tools, platforms;android-36, build-tools;36.0.0, ndk;28.2.13676358.</summary>
     public string[] AndroidPackages { get; set; } = [.. BuilderManifest.DefaultAndroidPackages];
 
+    /// <summary>Whether provisioning puts Node under the root, for the npm kind and for what a build runs through npm.</summary>
+    public bool HasNode { get; set; } = true;
+
+    /// <summary>The Node release provisioning fetches from nodejs.org, without the v: 26.13.0.</summary>
+    public string NodeVersion { get; set; } = BuilderManifest.DefaultNodeVersion;
+
+    /// <summary>The SHA-256 of that release's macOS arm64 tarball, checked before it is unpacked; empty checks nothing.</summary>
+    public string NodeSha256 { get; set; } = BuilderManifest.DefaultNodeSha256;
+
+    /// <summary>The secrets runs get in their environment, from this machine: each a name, a value or a keychain service, and the repository it is for.</summary>
+    public SecretSetting[] Secrets { get; set; } = [];
+
     /// <summary>Days a workspace may go without a build before a sweep removes it.</summary>
     public int WorkspaceDays { get; set; } = 14;
 
@@ -128,7 +140,10 @@ public sealed class BuildOptions
         JdkSha256 = JdkSha256,
         AndroidToolsBuild = AndroidToolsBuild,
         AndroidToolsSha256 = AndroidToolsSha256,
-        AndroidPackages = AndroidPackages
+        AndroidPackages = AndroidPackages,
+        HasNode = HasNode,
+        NodeVersion = NodeVersion,
+        NodeSha256 = NodeSha256
     };
 
     /// <summary>Whether the sync setting names a means this server knows.</summary>

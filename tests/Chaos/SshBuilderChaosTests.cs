@@ -36,7 +36,7 @@ public sealed class SshBuilderChaosTests
         string log = Path.Combine(TestFolder.Create(), "run.log");
         await builder.DeliverAsync(host, copy, false, CancellationToken.None);
 
-        var ran = await builder.ExecuteAsync(host, copy.Workspace, ["sh", "-c", $"sh -c 'sleep 300 # {word}; true'; true"], log, TimeSpan.FromSeconds(2), CancellationToken.None);
+        var ran = await builder.ExecuteAsync(host, copy.Workspace, ["sh", "-c", $"sh -c 'sleep 300 # {word}; true'; true"], new Dictionary<string, string>(), log, TimeSpan.FromSeconds(2), CancellationToken.None);
         await Task.Delay(500);
         var alive = await Programs.RunAsync("ssh", ["-o", "BatchMode=yes", host.Address, $"pgrep -f '{word}' || true"], null, TimeSpan.FromSeconds(30), CancellationToken.None);
 

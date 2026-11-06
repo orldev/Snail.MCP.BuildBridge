@@ -25,7 +25,7 @@ public static class Surveys
         docker image ls --filter label={{{ProvisionScripts.ImageLabel}}} --format 's3l-toolimage {{.Repository}}:{{.Tag}}' 2>/dev/null
         docker image ls --filter label={{{DockerCommand.Label}}} --format 's3l-image {{.ID}} {{.CreatedAt}} {{.Size}}' 2>/dev/null
         docker system df --format '{{.Type}}	{{.Size}}' 2>/dev/null | awk -F '	' '$1 == "Build Cache" { print "s3l-buildcache " $2 }'
-        echo "s3l-packages $(du -sk "$ROOT/nuget" "$ROOT/gradle" 2>/dev/null | awk '{ total += $1 } END { print total + 0 }')"
+        echo "s3l-packages $(du -sk "$ROOT/nuget" "$ROOT/gradle" "$ROOT/npm" "$ROOT/playwright" 2>/dev/null | awk '{ total += $1 } END { print total + 0 }')"
         echo "s3l-free $(df -g "$HOME" | tail -n 1 | awk '{print $4}')"
         """;
 

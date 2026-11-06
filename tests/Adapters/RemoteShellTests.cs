@@ -53,5 +53,6 @@ public sealed class RemoteShellTests
         Assert.Contains("export ANDROID_HOME=\"$HOME/.s3l-build/android\"", prelude, StringComparison.Ordinal);
         Assert.Contains("GRADLE_USER_HOME=\"$HOME/.s3l-build/gradle\"", prelude, StringComparison.Ordinal);
         Assert.Contains("export ANDROID_NDK_HOME=\"$HOME/.s3l-build/android/ndk\"/\"$S3L_NDK\"", prelude, StringComparison.Ordinal);
+        Assert.Contains("npm_config_cache=\"$HOME/.s3l-build/npm\" PLAYWRIGHT_BROWSERS_PATH=\"$HOME/.s3l-build/playwright\"", prelude, StringComparison.Ordinal);
     }
 }

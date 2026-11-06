@@ -42,6 +42,8 @@ public sealed class HostTests
     {
         Assert.Equal([Capability.Android, Capability.Docker], BuildKind.Android.Needs());
         Assert.Equal([Capability.Android], BuildKind.Gradle.Needs());
+        Assert.Equal([Capability.Node], BuildKind.Npm.Needs());
+        Assert.Equal("npm", BuildKind.Npm.Program(null));
         Assert.Empty(BuildKind.Script.Needs());
     }
 

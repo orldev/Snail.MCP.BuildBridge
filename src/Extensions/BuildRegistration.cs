@@ -20,6 +20,7 @@ public static class BuildRegistration
             services.AddSingleton<IValidateOptions<BuildOptions>, BuildOptionsValidation>();
             services.AddSingleton(TimeProvider.System);
             services.AddSingleton<IPrograms, Programs>();
+            services.AddSingleton<ISecrets, KeychainSecrets>();
             services.AddSingleton<ICopies, GitCopies>();
             services.AddSingleton<RemoteShell>();
             services.AddSingleton<RsyncCourier>();

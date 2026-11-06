@@ -50,9 +50,13 @@ internal sealed class FakeBuilder : IBuilder
         return Task.FromResult(Answer.Ok(new Delivery(new WorkspaceKey(relative, string.Empty), [], 0, TimeSpan.Zero, false)));
     }
 
-    public async Task<Answer<Execution>> ExecuteAsync(Host host, WorkspaceKey key, IReadOnlyList<string> command, string log, TimeSpan timeout, CancellationToken cancellationToken)
+    /// <summary>The environment each execution was given, in order.</summary>
+    public List<IReadOnlyDictionary<string, string>> Environments { get; } = [];
+
+    public async Task<Answer<Execution>> ExecuteAsync(Host host, WorkspaceKey key, IReadOnlyList<string> command, IReadOnlyDictionary<string, string> environment, string log, TimeSpan timeout, CancellationToken cancellationToken)
     {
         Executed.Add((key, command));
+        Environments.Add(environment);
         await Held.WaitAsync(cancellationToken);
         Directory.CreateDirectory(Path.GetDirectoryName(log)!);
         await File.WriteAllTextAsync(log, LogText, cancellationToken);
@@ -126,4 +130,21 @@ internal sealed class FakeCopies : ICopies
     public Task<IReadOnlyList<string>> IgnoredAsync(LocalCopy copy, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<string>>([]);
 
     public Task<IReadOnlyList<string>> IgnorePatternsAsync(LocalCopy copy, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<string>>([]);
+}
+
+/// <summary>Secrets that are what the test sets, for every repository, or a failure to read them.</summary>
+internal sealed class FakeSecrets : ISecrets
+{
+    public Dictionary<string, string> Values { get; } = new(StringComparer.Ordinal);
+
+    public string? Error { get; set; }
+
+    public List<string> AskedFor { get; } = [];
+
+    public Task<Answer<IReadOnlyDictionary<string, string>>> ForAsync(string repository, CancellationToken cancellationToken)
+    {
+        AskedFor.Add(repository);
+
+        return Task.FromResult(Error is { } error ? Answer.Failed<IReadOnlyDictionary<string, string>>(error) : Answer.Ok<IReadOnlyDictionary<string, string>>(Values));
+    }
 }

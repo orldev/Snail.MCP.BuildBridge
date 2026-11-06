@@ -54,6 +54,18 @@ public sealed class ProgramsTests
         Assert.Equal("one\ntwo\nthree\n", await File.ReadAllTextAsync(log));
     }
 
+    /// <summary>What a run is given on its standard input reaches the program whole, then the end of it: the way variables travel to a host's shell without touching its command line.</summary>
+    [Fact]
+    public async Task RunToLogAsync_WithInput_FeedsItToTheProgramThenEndsIt()
+    {
+        string log = Path.Combine(TestFolder.Create(), "run.log");
+
+        var run = await new Programs().RunToLogAsync("/bin/sh", ["-c", "eval \"$(cat)\"; printf '%s\\n' \"$TOKEN\""], null, log, Patience, CancellationToken.None, "export TOKEN='s3cr3t it'\\''s'\n");
+
+        Assert.Equal(0, run.ExitCode);
+        Assert.Equal("s3cr3t it's\n", await File.ReadAllTextAsync(log));
+    }
+
     [Fact]
     public async Task RunToLogAsync_ProgramPastItsTime_KeepsWhatItWroteSoFar()
     {

@@ -35,6 +35,7 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
             android=""; ndk="${ANDROID_NDK_HOME##*/}"
             if [ -n "$JAVA_HOME" ] && [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then android="jdk $(java -version 2>&1 | head -n 1 | sed 's/.*"\(.*\)".*/\1/'), ndk ${ndk:-none}"; fi
             printf 'android=%s\n' "$android"
+            printf 'node=%s\n' "$(node --version 2>/dev/null | sed 's/^v//')"
             printf 'free=%s\n' "$(df -g "$HOME" | tail -n 1 | awk '{print $4}')"
             printf 'home=%s\n' "$HOME"
             """;
@@ -53,7 +54,8 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
             new(Capability.Dotnet, Version(answers, "dotnet")),
             new(Capability.Xcode, Version(answers, "xcode")),
             new(Capability.Docker, Version(answers, "docker")),
-            new(Capability.Android, Version(answers, "android"))
+            new(Capability.Android, Version(answers, "android")),
+            new(Capability.Node, Version(answers, "node"))
         };
         double? free = double.TryParse(answers.GetValueOrDefault("free"), NumberStyles.Float, CultureInfo.InvariantCulture, out double gigabytes) ? gigabytes : null;
 
@@ -119,12 +121,15 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
     }
 
     /// <inheritdoc/>
-    public async Task<Answer<Execution>> ExecuteAsync(Host host, WorkspaceKey key, IReadOnlyList<string> command, string log, TimeSpan timeout, CancellationToken cancellationToken)
+    /// <remarks>The variables of the run go to the host's shell on its standard input, which it reads whole before the command starts: neither ssh's command line nor the log carries them.</remarks>
+    public async Task<Answer<Execution>> ExecuteAsync(Host host, WorkspaceKey key, IReadOnlyList<string> command, IReadOnlyDictionary<string, string> environment, string log, TimeSpan timeout, CancellationToken cancellationToken)
     {
         string workspace = RemoteShell.Under(host, key.CopyFolder);
         string pidFile = RemoteShell.Under(host, $"{key.Folder}/{PidFileName}");
+        string taken = environment.Count > 0 ? "eval \"$(cat)\"\n" : string.Empty;
+        string? input = environment.Count > 0 ? RemoteShell.Exports(environment) : null;
         string script = $"""
-            {RemoteShell.Prelude(host)}cd {workspace} || exit 97
+            {RemoteShell.Prelude(host)}{taken}cd {workspace} || exit 97
             touch {RemoteShell.Under(host, $"{key.Folder}/{WorkspaceMarker.BuiltFileName}")}
             {RemoteShell.Quoted(command)} &
             pid=$!
@@ -141,7 +146,7 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
 
         try
         {
-            run = await programs.RunToLogAsync(words[0], words[1..], null, log, timeout, cancellationToken);
+            run = await programs.RunToLogAsync(words[0], words[1..], null, log, timeout, cancellationToken, input);
         }
         catch (OperationCanceledException)
         {
@@ -330,7 +335,7 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
             SweepKind.Package when AndroidPackages.IsName(item.Name) => $"{RemoteShell.Under(host, "android/cmdline-tools/latest/bin/sdkmanager")} --sdk_root={RemoteShell.Under(host, "android")} --uninstall {RemoteShell.Quoted(item.Name)} </dev/null >/dev/null 2>&1 && echo removed",
             SweepKind.Images => $"docker image prune -a --force --filter label={DockerCommand.Label} --filter until={item.Name} >/dev/null && echo removed",
             SweepKind.BuildCache => $"docker builder prune -a --force {(item.Name == "all" ? string.Empty : $"--filter until={item.Name}")} >/dev/null && echo removed",
-            SweepKind.Packages => $"rm -rf {RemoteShell.Under(host, "nuget")} {RemoteShell.Under(host, "gradle")} && echo removed",
+            SweepKind.Packages => $"rm -rf {RemoteShell.Under(host, "nuget")} {RemoteShell.Under(host, "gradle")} {RemoteShell.Under(host, "npm")} {RemoteShell.Under(host, "playwright")} && echo removed",
             _ => string.Empty
         };
         if (script.Length == 0)

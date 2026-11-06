@@ -49,7 +49,7 @@ public sealed class Programs : IPrograms
     /// The program's errors are joined to its output by a shell before anything is read, so one stream goes to the log
     /// in the order it was written; the file is written unbuffered, so a reader sees each chunk as it lands.
     /// </remarks>
-    public async Task<ProgramRun> RunToLogAsync(string program, IReadOnlyList<string> arguments, string? directory, string log, TimeSpan timeout, CancellationToken cancellationToken)
+    public async Task<ProgramRun> RunToLogAsync(string program, IReadOnlyList<string> arguments, string? directory, string log, TimeSpan timeout, CancellationToken cancellationToken, string? input = null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(log)!);
 
@@ -57,7 +57,7 @@ public sealed class Programs : IPrograms
         if (!TryStart(process))
             return ProgramRun.Missing(program);
 
-        process.StandardInput.Close();
+        await FeedAsync(process, input, cancellationToken);
 
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(timeout);

@@ -3,7 +3,7 @@ using Snail.MCP.BuildBridge.Domain;
 
 namespace Snail.MCP.BuildBridge.Configuration;
 
-/// <summary>What makes the settings unusable, said at start rather than met in a tool: a host without a name or an address, two hosts of one name, a time of zero, a sync nobody knows.</summary>
+/// <summary>What makes the settings unusable, said at start rather than met in a tool: a host without a name or an address, two hosts of one name, a time of zero, a sync nobody knows, a secret without a name or a source.</summary>
 public sealed class BuildOptionsValidation : IValidateOptions<BuildOptions>
 {
     /// <summary>Every problem of <paramref name="options"/>, in words; none when they are usable.</summary>
@@ -26,6 +26,13 @@ public sealed class BuildOptionsValidation : IValidateOptions<BuildOptions>
             problems.Add("TransferSeconds, RunSeconds and ProbeSeconds must be above zero.");
         if (!options.HasKnownSync)
             problems.Add($"Sync must be {Delivery.Rsync} or {Delivery.Mutagen}.");
+        foreach (var secret in options.Secrets)
+        {
+            if (!Variables.IsName(secret.Name))
+                problems.Add($"The secret \"{secret.Name}\" is not named as a variable is: letters, digits and underscores, not starting with a digit.");
+            if (string.IsNullOrEmpty(secret.Value) == string.IsNullOrEmpty(secret.Keychain))
+                problems.Add($"The secret {secret.Name} needs a Value or a Keychain service, one of the two.");
+        }
 
         return problems;
     }

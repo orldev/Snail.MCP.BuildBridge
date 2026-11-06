@@ -113,7 +113,7 @@ public sealed class ContainerCommandTests
     [Fact]
     public void Shaped_LinuxTest_RunsDotnetInTheDotnetImageWithTheWorkspaceMounted()
     {
-        var shaped = ContainerCommand.Shaped(BuildKind.Linux, ["test", "-c", "Release"], Key, "/Users/dev/.s3l-build", "10.0.302");
+        var shaped = ContainerCommand.Shaped(BuildKind.Linux, ["test", "-c", "Release"], Key, "/Users/dev/.s3l-build", "10.0.302", []);
 
         Assert.Equal("run", shaped[0]);
         Assert.Contains("snail.owner=buildbridge/Sample/main", shaped);
@@ -124,10 +124,22 @@ public sealed class ContainerCommandTests
         Assert.DoesNotContain("--platform", shaped);
     }
 
+    /// <summary>A variable of the run reaches the container by name: docker takes its value from the shell's environment, so the command line carries no value.</summary>
+    [Fact]
+    public void Shaped_WithVariables_PassesEachByNameOnly()
+    {
+        var shaped = ContainerCommand.Shaped(BuildKind.Linux, ["test"], Key, "/root", "10.0.302", ["TOKEN", "STAGE"]);
+
+        Assert.Contains("TOKEN", shaped);
+        Assert.Contains("STAGE", shaped);
+        Assert.Equal("-e", shaped[shaped.ToList().IndexOf("TOKEN") - 1]);
+        Assert.DoesNotContain(shaped, word => word.Contains('=') && word.StartsWith("TOKEN", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Shaped_Android_RunsTheAndroidImageAsAmd64()
     {
-        var shaped = ContainerCommand.Shaped(BuildKind.Android, ["build"], Key, "/Users/dev/.s3l-build", "10.0.302");
+        var shaped = ContainerCommand.Shaped(BuildKind.Android, ["build"], Key, "/Users/dev/.s3l-build", "10.0.302", []);
 
         Assert.Contains("s3l-build-android:10.0.302", shaped);
         Assert.Equal("linux/amd64", shaped[shaped.ToList().IndexOf("--platform") + 1]);
@@ -136,14 +148,14 @@ public sealed class ContainerCommandTests
     [Fact]
     public void Shaped_NoSdkVersion_RunsTheLatestTag()
     {
-        var shaped = ContainerCommand.Shaped(BuildKind.Linux, ["build"], Key, "/root", string.Empty);
+        var shaped = ContainerCommand.Shaped(BuildKind.Linux, ["build"], Key, "/root", string.Empty, []);
 
         Assert.Contains("s3l-build-dotnet:latest", shaped);
     }
 
     [Fact]
     public void Shaped_AKindOfTheHost_IsRefused() =>
-        Assert.Throws<ArgumentOutOfRangeException>(() => ContainerCommand.Shaped(BuildKind.Dotnet, ["build"], Key, "/root", "10.0.302"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => ContainerCommand.Shaped(BuildKind.Dotnet, ["build"], Key, "/root", "10.0.302", []));
 }
 
 /// <summary>A script of the repository as a run starts it.</summary>

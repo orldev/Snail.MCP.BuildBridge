@@ -5,7 +5,7 @@ namespace Snail.MCP.BuildBridge.Tools;
 public static class ToolDescriptions
 {
     /// <summary>The toolchains a host may have, as the tools spell them; a guard test compares them with <c>Capability</c>.</summary>
-    public const string Capabilities = "dotnet, xcode, docker and android";
+    public const string Capabilities = "dotnet, xcode, docker, android and node";
 
     /// <summary>The contract of build_hosts.</summary>
     public const string Hosts =
@@ -45,7 +45,8 @@ public static class ToolDescriptions
         root with its workloads, add the mirrored package feeds to its NuGet sources, build the images the settings
         name for the linux and android kinds when docker is there, put xcodegen under the root when Xcode is there,
         put a JDK and the Android SDK with its NDK under the root for the gradle and android kinds — whose licences a
-        person accepts, and the answer says how — and look at Xcode, Docker, Rosetta and sleep — those a person
+        person accepts, and the answer says how — put Node under the root for the npm kind, and look at Xcode,
+        Docker, Rosetta and sleep — those a person
         installs or sets, since each means a licence or a password, and the answer says how. Run it on a new host,
         and again after the settings change or a licence is accepted; what is in place already is left as it is. The
         work runs as a job: the answer is the job's report, with the steps as its result when it ends within the wait,
@@ -57,7 +58,7 @@ public static class ToolDescriptions
     public const string Wait = "Seconds to wait for the work before answering with the running job; 60 when not given, 0 answers with the job at once.";
 
     /// <summary>The kinds of build, as the tools spell them; a guard test compares them with <c>BuildKind</c>.</summary>
-    public const string Kinds = "dotnet, xcode, docker, linux, android, gradle or script";
+    public const string Kinds = "dotnet, xcode, docker, linux, android, gradle, npm or script";
 
     /// <summary>The contract of build_run.</summary>
     public const string Run =
@@ -73,7 +74,9 @@ public static class ToolDescriptions
         up -d --build. linux runs dotnet inside the host's s3l-build-dotnet image: a Linux target, Native AOT for
         Linux, tests on Linux. android runs dotnet for an Android target: on the host when it has the Android
         toolchain under its root, inside the s3l-build-android image otherwise. gradle runs the repository's gradlew,
-        such as assembleDebug, with the JDK, the SDK and the NDK under the root. script runs a script of the
+        such as assembleDebug, with the JDK, the SDK and the NDK under the root. npm runs npm with Node under the root,
+        such as ci, test, run build, or exec -- playwright install, npm's cache and Playwright's browsers kept under
+        the root too. script runs a script of the
         repository as it is — the first argument its path from the workspace's root, such as
         tools/native/build-xcframework.sh, the rest its arguments — for what a build needs that no one program says.
 
@@ -81,7 +84,9 @@ public static class ToolDescriptions
         packages, put under the root before the run and kept; the .NET SDK the copy's global.json names goes under
         the root when none there meets it; a dotnet build that fails for want of a platform (XA5207) or of workloads
         (NETSDK1147) gets them and runs again by itself, once; a gradle build fetches what its project names on its
-        own.
+        own. environment assigns variables for the run that are no secret; the secrets the settings name for the
+        repository reach the host's shell for the run alone, never a tool, a job or the log, and build_diagnose
+        says which names those are.
 
         An xcode run keeps its derived data under the host's root; each destination that names a simulator by name
         gets a clone of it for the run alone, deleted when the run ends, so several destinations in one run test on
@@ -107,6 +112,9 @@ public static class ToolDescriptions
 
     /// <summary>The needs parameter of build_run.</summary>
     public const string RunNeeds = "Android SDK packages this build needs beyond what the host has, as sdkmanager names them — [\"platforms;android-37\", \"build-tools;37.0.0\"]; a platform named by its API level is taken with the minor version Google gives it — put under the host's root before the run and kept there; none when not given.";
+
+    /// <summary>The environment parameter of build_run.</summary>
+    public const string RunEnvironment = "Variables for the run that are no secret, NAME=value each, such as [\"ASPNETCORE_ENVIRONMENT=Testing\"]; none when not given. A secret never comes this way: the settings name it under Secrets, and the run gets it from this machine's file or keychain for the repository it is scoped to.";
 
     /// <summary>The contract of build_logs.</summary>
     public const string Logs =
@@ -183,7 +191,8 @@ public static class ToolDescriptions
     public const string Diagnose =
         """
         Say what state this server is in: its version, the hosts its settings name, whether ssh, rsync, git and
-        mutagen are on this machine, what carries a copy, and where it keeps its data. Changes nothing. Start here
-        when a build does not go where it should.
+        mutagen are on this machine, what carries a copy, the secrets the settings name — by name, source and
+        repository, never their values — and where it keeps its data. Changes nothing. Start here when a build does
+        not go where it should.
         """;
 }

@@ -148,11 +148,12 @@ public static class ContainerCommand
     /// <summary>The NuGet configuration provisioning writes for containers, relative to the root.</summary>
     public const string NuGetConfig = "containers/NuGet.Config";
 
-    /// <summary>The docker arguments that run dotnet with <paramref name="arguments"/> in the kind's image, in the workspace under <paramref name="root"/>.</summary>
-    public static IReadOnlyList<string> Shaped(BuildKind kind, IReadOnlyList<string> arguments, WorkspaceKey key, string root, string sdkVersion)
+    /// <summary>The docker arguments that run dotnet with <paramref name="arguments"/> in the kind's image, in the workspace under <paramref name="root"/>, with the run's <paramref name="variables"/> passed in by name from the shell's environment.</summary>
+    public static IReadOnlyList<string> Shaped(BuildKind kind, IReadOnlyList<string> arguments, WorkspaceKey key, string root, string sdkVersion, IReadOnlyCollection<string> variables)
     {
         string image = kind.ImageOf() ?? throw new ArgumentOutOfRangeException(nameof(kind), kind, "The kind runs on the host, not in a container.");
         List<string> platform = BuildImage.PlatformOf(image) is { } wanted ? ["--platform", wanted] : [];
+        var passed = variables.SelectMany(variable => new[] { "-e", variable });
 
         return
         [
@@ -161,7 +162,7 @@ public static class ContainerCommand
             "-v", $"{root}/nuget:/root/.nuget/packages",
             "-v", $"{root}/feeds:{Feeds}:ro",
             "-v", $"{root}/{NuGetConfig}:/root/.nuget/NuGet/NuGet.Config:ro",
-            "-e", "DOTNET_CLI_TELEMETRY_OPTOUT=1", "-e", "DOTNET_NOLOGO=1",
+            "-e", "DOTNET_CLI_TELEMETRY_OPTOUT=1", "-e", "DOTNET_NOLOGO=1", .. passed,
             BuildImage.TagOf(image, sdkVersion), "dotnet", .. arguments
         ];
     }

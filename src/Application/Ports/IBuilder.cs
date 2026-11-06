@@ -21,8 +21,8 @@ public interface IBuilder
     /// <summary>Mirrors a folder of this machine to <paramref name="relative"/> under the host's root, sending only what changed.</summary>
     Task<Answer<Delivery>> MirrorAsync(Host host, string source, string relative, CancellationToken cancellationToken);
 
-    /// <summary>Runs a command in a workspace on the host, its output going to <paramref name="log"/> on this machine as it is written, until it ends or <paramref name="timeout"/> passes.</summary>
-    Task<Answer<Execution>> ExecuteAsync(Host host, WorkspaceKey key, IReadOnlyList<string> command, string log, TimeSpan timeout, CancellationToken cancellationToken);
+    /// <summary>Runs a command in a workspace on the host with <paramref name="environment"/> in its environment, its output going to <paramref name="log"/> on this machine as it is written, until it ends or <paramref name="timeout"/> passes.</summary>
+    Task<Answer<Execution>> ExecuteAsync(Host host, WorkspaceKey key, IReadOnlyList<string> command, IReadOnlyDictionary<string, string> environment, string log, TimeSpan timeout, CancellationToken cancellationToken);
 
     /// <summary>Clones the simulator named <paramref name="device"/> on the host into one called <paramref name="clone"/>, for one run, and answers its id.</summary>
     Task<Answer<string>> AcquireSimulatorAsync(Host host, string device, string clone, CancellationToken cancellationToken);

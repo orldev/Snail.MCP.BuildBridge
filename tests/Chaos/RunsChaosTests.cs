@@ -28,7 +28,7 @@ public sealed class RunsChaosTests
         var logs = new Logs(TimeProvider.System);
         var turns = new WorkspaceTurns();
 
-        return (new Runs(hosts, copies, builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), turns, options), new Deliveries(hosts, copies, builder, turns), builder);
+        return (new Runs(hosts, copies, builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), turns, new FakeSecrets(), options), new Deliveries(hosts, copies, builder, turns), builder);
     }
 
     /// <summary>
@@ -43,7 +43,7 @@ public sealed class RunsChaosTests
         var gate = new TaskCompletionSource();
         builder.Held = gate.Task;
 
-        var run = runs.RunAsync("/Users/me/Sample", BuildKind.Dotnet, ["build"], [], null, new Quiet(), CancellationToken.None);
+        var run = runs.RunAsync("/Users/me/Sample", BuildKind.Dotnet, ["build"], [], [], null, new Quiet(), CancellationToken.None);
         await Task.Delay(100);
         var sync = deliveries.DeliverAsync("/Users/me/Sample", null, false, CancellationToken.None);
         await Task.Delay(100);
@@ -63,9 +63,9 @@ public sealed class RunsChaosTests
         builder.Held = gate.Task;
         using var cancelled = new CancellationTokenSource();
 
-        var first = runs.RunAsync("/Users/me/Sample", BuildKind.Dotnet, ["build"], [], null, new Quiet(), CancellationToken.None);
+        var first = runs.RunAsync("/Users/me/Sample", BuildKind.Dotnet, ["build"], [], [], null, new Quiet(), CancellationToken.None);
         await Task.Delay(100);
-        var waiting = runs.RunAsync("/Users/me/Sample", BuildKind.Dotnet, ["test"], [], null, new Quiet(), cancelled.Token);
+        var waiting = runs.RunAsync("/Users/me/Sample", BuildKind.Dotnet, ["test"], [], [], null, new Quiet(), cancelled.Token);
         await Task.Delay(100);
         await cancelled.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
@@ -73,7 +73,7 @@ public sealed class RunsChaosTests
         await first;
         builder.Held = Task.CompletedTask;
 
-        var third = await runs.RunAsync("/Users/me/Sample", BuildKind.Dotnet, ["pack"], [], null, new Quiet(), CancellationToken.None);
+        var third = await runs.RunAsync("/Users/me/Sample", BuildKind.Dotnet, ["pack"], [], [], null, new Quiet(), CancellationToken.None);
 
         Assert.Null(third.Error);
         Assert.Equal(2, builder.Executed.Count);
@@ -91,9 +91,9 @@ public sealed class RunsChaosTests
         var work = Enumerable.Range(0, 50).Select(number =>
         {
             var copies = new FakeCopies { Copy = new LocalCopy($"/Users/me/Sample{number}", $"Sample{number}", "main", null, false) };
-            var runs = new Runs(hosts, copies, builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), options);
+            var runs = new Runs(hosts, copies, builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), new FakeSecrets(), options);
 
-            return runs.RunAsync(copies.Copy.Path, BuildKind.Dotnet, ["build"], [], null, new Quiet(), CancellationToken.None);
+            return runs.RunAsync(copies.Copy.Path, BuildKind.Dotnet, ["build"], [], [], null, new Quiet(), CancellationToken.None);
         });
 
         var answers = await Task.WhenAll(work);

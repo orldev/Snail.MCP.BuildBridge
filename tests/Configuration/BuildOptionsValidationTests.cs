@@ -29,4 +29,27 @@ public sealed class BuildOptionsValidationTests
     [Fact]
     public void ProblemsOf_AnUnknownSync_IsRefused() =>
         Assert.Single(BuildOptionsValidation.ProblemsOf(new BuildOptions { Sync = "scp" }));
+
+    /// <summary>A secret is a variable's name with one source: no name, two sources or none is refused at start, each said.</summary>
+    [Fact]
+    public void ProblemsOf_SecretsWithoutANameOrWithTwoSourcesOrNone_AreRefusedEach()
+    {
+        var options = new BuildOptions
+        {
+            Secrets =
+            [
+                new SecretSetting { Name = "TOKEN", Keychain = "anonym" },
+                new SecretSetting { Name = "1BAD", Value = "x" },
+                new SecretSetting { Name = "BOTH", Value = "x", Keychain = "y" },
+                new SecretSetting { Name = "NONE" }
+            ]
+        };
+
+        var problems = BuildOptionsValidation.ProblemsOf(options);
+
+        Assert.Equal(3, problems.Count);
+        Assert.Contains(problems, problem => problem.Contains("1BAD", StringComparison.Ordinal));
+        Assert.Contains(problems, problem => problem.Contains("BOTH", StringComparison.Ordinal));
+        Assert.Contains(problems, problem => problem.Contains("NONE", StringComparison.Ordinal));
+    }
 }

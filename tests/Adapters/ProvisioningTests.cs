@@ -23,7 +23,7 @@ public sealed class ProvisioningTests
     {
         var host = new Host("here", "localhost", TestFolder.Create());
         string log = Path.Combine(TestFolder.Create(), "provision.log");
-        var manifest = new BuilderManifest(string.Empty, [], [], [], false) { HasAndroid = false };
+        var manifest = new BuilderManifest(string.Empty, [], [], [], false) { HasAndroid = false, HasNode = false };
 
         var answer = await Builder().ProvisionAsync(host, manifest, log, TimeSpan.FromSeconds(60), CancellationToken.None);
 
@@ -88,6 +88,17 @@ public sealed class ProvisioningTests
         Assert.Contains("--licenses", script, StringComparison.Ordinal);
         Assert.Contains("s3l-step jdk", script, StringComparison.Ordinal);
         Assert.Contains("s3l-step android", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProvisionScript_ManifestWithNode_FetchesTheReleaseByChecksum()
+    {
+        var script = ProvisionScripts.Of(new Host("mini", "mini"), new BuilderManifest("10.0.302", [], [], []));
+
+        Assert.Contains("https://nodejs.org/dist/v26.13.0/node-v26.13.0-darwin-arm64.tar.gz", script, StringComparison.Ordinal);
+        Assert.Contains(BuilderManifest.DefaultNodeSha256, script, StringComparison.Ordinal);
+        Assert.Contains("s3l-step node", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("s3l-step node", ProvisionScripts.Of(new Host("mini", "mini"), new BuilderManifest("10.0.302", [], [], []) { HasNode = false }), StringComparison.Ordinal);
     }
 
     [Fact]

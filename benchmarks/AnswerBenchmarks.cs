@@ -2,6 +2,7 @@ using BenchmarkDotNet.Attributes;
 using ModelContextProtocol.Protocol;
 using Snail.MCP.BuildBridge.Domain;
 using Snail.MCP.BuildBridge.Tools;
+using Snail.Sdk.Mcp.Hosting.Answers;
 
 namespace Snail.MCP.BuildBridge.Benchmarks;
 
@@ -25,9 +26,9 @@ public class AnswerBenchmarks
 
     /// <summary>One host as build_hosts answers it.</summary>
     [Benchmark]
-    public CallToolResult Host() => ToolResponse.Success(ToolResponse.Data(Mini));
+    public CallToolResult Host() => ToolAnswer.Ok(AnswerFields.Of(Mini));
 
     /// <summary>One delivery of forty files as build_sync answers it.</summary>
     [Benchmark]
-    public CallToolResult Sync() => ToolResponse.Success(ToolResponse.Data(Delivered));
+    public CallToolResult Sync() => ToolAnswer.Ok(AnswerFields.Of(Delivered));
 }

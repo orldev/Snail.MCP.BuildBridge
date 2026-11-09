@@ -1,5 +1,6 @@
 using Snail.MCP.BuildBridge.Application;
 using Snail.MCP.BuildBridge.Application.Ports;
+using Snail.Sdk.Mcp.Hosting.Answers;
 
 namespace Snail.MCP.BuildBridge.Tests.Application;
 
@@ -125,7 +126,7 @@ internal sealed class FakeCopies : ICopies
     public LocalCopy? Copy { get; set; } = new("/Users/me/Sample", "Sample", "main", "abc1234", false);
 
     public Task<Answer<LocalCopy>> ReadAsync(string path, CancellationToken cancellationToken) =>
-        Task.FromResult(Copy is { } copy ? Answer.Ok(copy) : Answer.Failed<LocalCopy>(Messages.NotACopy(path)));
+        Task.FromResult(Copy is { } copy ? Answer.Ok(copy) : Answer.Failed<LocalCopy>(Messages.NotACopy(path), type: Refusals.NotACopy));
 
     public Task<IReadOnlyList<string>> IgnoredAsync(LocalCopy copy, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<string>>([]);
 

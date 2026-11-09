@@ -27,6 +27,14 @@ public static class ServerRegistration
         machine without passing through a tool. One workspace — a repository on a branch — takes one run at a time; runs in other workspaces go side
         by side, and several simulators are several -destination in one xcode run, not several runs. Start with
         build_hosts.
+
+        Every answer is JSON with an ok flag, and a failed call is also flagged isError. When ok is false, read error
+        and hint and act on them instead of repeating the call as it was; type names the kind of failure, a word to
+        branch on: arguments, outside, noPath, absent, timeout, noHosts, noSuchHost, noSuchJob, noSuchPlan,
+        unreachable, noToolchain, notACopy, notInstalled, noSecret, noHome, notDelivered, notCollected,
+        notProvisioned, notSupplied, noSimulator, notGenerated, notSurveyed. A job that could not happen ends failed
+        with the type of what stopped it. A build that ran and failed is not such a failure: its job succeeded, and its result says
+        success false with the exit code and the log.
         """;
 
     /// <summary>The server's name, version and instructions.</summary>

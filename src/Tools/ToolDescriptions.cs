@@ -50,8 +50,10 @@ public static class ToolDescriptions
         installs or sets, since each means a licence or a password, and the answer says how. Run it on a new host,
         and again after the settings change or a licence is accepted; what is in place already is left as it is. The
         work runs as a job: the answer is the job's report, with the steps as its result when it ends within the wait,
-        or the running job, whose resource job://buildbridge/provision/<id> carries them once it ends. A workload
-        install is minutes, the Android packages and an image longer; the job may run up to 3600 seconds.
+        or the running job, whose resource job://buildbridge/provision/<id> carries them once it ends; a host that does
+        not answer or a provisioning that broke off ends the job failed with the error, its type — unreachable,
+        notInstalled, timeout, notProvisioned — and a hint when there is something to do. A workload install is minutes, the Android packages and an image longer; the job may run up
+        to 3600 seconds.
         """;
 
     /// <summary>The wait parameter of a tool that runs a job.</summary>
@@ -96,9 +98,12 @@ public static class ToolDescriptions
 
         The work runs as a job: the answer is the job's report, with the build as its result when it ends within the
         wait, or the running job, whose resource job://buildbridge/<kind>/<id> carries it once it ends and whose
-        message names the log. A run may take up to 3600 seconds. One workspace — a repository on a branch — takes
-        one run at a time, and a second waits its turn; runs in other workspaces, another branch or another
-        repository, go side by side.
+        message names the log. A build that ran and failed is a job that succeeded, its result saying success false;
+        a run that could not happen — no working copy, a host that does not answer, a delivery that broke off — ends
+        the job failed with the error, its type — notACopy, unreachable, noToolchain, notDelivered and the rest the
+        server's instructions name — and a hint when there is something to do. A run may take up to 3600 seconds.
+        One workspace — a repository on a branch — takes one run at a time, and a second waits its turn; runs in other
+        workspaces, another branch or another repository, go side by side.
         """;
 
     /// <summary>The path parameter of build_run.</summary>
@@ -120,7 +125,8 @@ public static class ToolDescriptions
     public const string Logs =
         """
         Read the end of a build's log on this machine, as build_run named it, while the build runs or after it ended.
-        Only a log of this server is read. The last 100 lines unless asked for more, at most 2000.
+        Only a log of this server is read: a path that leads out of its jobs folder, links followed, is refused as
+        outside, and a log that is not there as absent. The last 100 lines unless asked for more, at most 2000.
         """;
 
     /// <summary>The log parameter of build_logs.</summary>

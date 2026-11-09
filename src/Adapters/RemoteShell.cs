@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Snail.MCP.BuildBridge.Configuration;
 using Snail.MCP.BuildBridge.Domain;
+using Snail.Sdk.Mcp.Hosting;
 
 namespace Snail.MCP.BuildBridge.Adapters;
 
@@ -52,10 +53,7 @@ public sealed class RemoteShell(IOptions<BuildOptions> options)
             : Quoted($"{host.Root}/{relative}");
 
     /// <summary>The host's root as this machine's file system sees it, when the host is this machine.</summary>
-    public static string LocalRoot(Host host) =>
-        host.Root.StartsWith("~/", StringComparison.Ordinal)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), host.Root[2..])
-            : host.Root;
+    public static string LocalRoot(Host host) => ServerFolders.ExpandHome(host.Root);
 
     /// <summary>A folder under the host's root as rsync names it: a local path on this machine, <c>address:path</c> on another.</summary>
     public static string Rsync(Host host, string relative) =>

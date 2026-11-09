@@ -8,6 +8,15 @@
     <PackageProjectUrl>https://github.com/orldev/Snail.MCP.BuildBridge</PackageProjectUrl>
   </PropertyGroup>
 
+  <!--
+    A native package per platform the server runs on, and a framework-dependent one for the rest (Snail.Sdk.Mcp's
+    default list, without win-x64). Windows is not among them: the server runs its work through /bin/sh, ssh and
+    rsync, and the CI would otherwise build win-x64 and put the contract tests on a Windows runner.
+  -->
+  <PropertyGroup>
+    <ToolPackageRuntimeIdentifiers>osx-arm64;osx-x64;linux-x64;linux-arm64;any</ToolPackageRuntimeIdentifiers>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol" />
   </ItemGroup>

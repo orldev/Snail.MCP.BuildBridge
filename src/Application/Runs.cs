@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using Snail.MCP.BuildBridge.Application.Ports;
 using Snail.MCP.BuildBridge.Configuration;
 using Snail.MCP.BuildBridge.Domain;
+using Snail.Sdk.Mcp.Hosting.Answers;
 using Snail.Sdk.Mcp.Hosting.Jobs;
 
 namespace Snail.MCP.BuildBridge.Application;
@@ -15,37 +16,37 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
     public async Task<Answer<BuildReport>> RunAsync(string path, BuildKind kind, IReadOnlyList<string> arguments, IReadOnlyList<string> needs, IReadOnlyList<string> environment, string? host, IProgress<JobProgress> progress, CancellationToken cancellationToken)
     {
         var copy = await copies.ReadAsync(path, cancellationToken);
-        if (copy.Value is not { } found)
-            return Answer.Failed<BuildReport>(copy.Error!, copy.Hint);
+        if (!copy.TryGet(out var found))
+            return copy.As<BuildReport>();
 
         var (named, misnamed) = Variables.Parsed(environment);
         if (misnamed is not null)
-            return Answer.Failed<BuildReport>(Messages.NotAVariable(misnamed));
+            return Answer.Failed(Messages.NotAVariable(misnamed), type: Refusals.Arguments);
         var secret = await secrets.ForAsync(found.Repository, cancellationToken);
-        if (secret.Value is not { } hidden)
-            return Answer.Failed<BuildReport>(secret.Error!, secret.Hint);
+        if (!secret.TryGet(out var hidden))
+            return secret.As<BuildReport>();
         var variables = Merged(named, hidden);
 
-        if (kind == BuildKind.Script && ScriptOf(found, arguments) is { Error: { } wrong } refused)
-            return Answer.Failed<BuildReport>(wrong, refused.Hint);
+        if (kind == BuildKind.Script && ScriptOf(found, arguments) is { IsSuccess: false } refused)
+            return refused.As<BuildReport>();
         if (kind == BuildKind.Gradle && !File.Exists(Path.Combine(found.Path, GradleCommand.Wrapper)))
-            return Answer.Failed<BuildReport>(Messages.NoGradleWrapper(found.Path));
+            return Answer.Failed(Messages.NoGradleWrapper(found.Path), type: Refusals.Absent);
         if (needs.FirstOrDefault(package => !AndroidPackages.IsName(package)) is { } odd)
-            return Answer.Failed<BuildReport>(Messages.NotAPackage(odd));
+            return Answer.Failed(Messages.NotAPackage(odd), type: Refusals.Arguments);
 
         var ready = await hosts.ReadyAsync(host, kind.Needs(), cancellationToken);
-        if (ready.Value is not { } state)
-            return Answer.Failed<BuildReport>(ready.Error!, ready.Hint);
+        if (!ready.TryGet(out var state))
+            return ready.As<BuildReport>();
         if (needs.Count > 0 && !state.Has(Capability.Android))
-            return Answer.Failed<BuildReport>(Messages.HostCannot(state.Host.Name, "android"));
+            return Answer.Failed(Messages.HostCannot(state.Host.Name, "android"), type: Refusals.NoToolchain);
 
         string? image = kind.ImageOn(state);
         var supplied = new List<string>();
         foreach (var supply in await WantedAsync(found, kind, image, state, needs, cancellationToken))
         {
             var put = await SuppliedAsync(state.Host, supply, progress, cancellationToken);
-            if (put.Value is not { } words)
-                return Answer.Failed<BuildReport>(put.Error!, put.Hint);
+            if (!put.TryGet(out var words))
+                return put.As<BuildReport>();
 
             supplied.AddRange(words);
         }
@@ -57,7 +58,7 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
                 progress.Report(new JobProgress(0, 5, $"swept {state.Host.Name}, which was short of room"));
 
             var ran = await RanAsync(state, image, found, kind, arguments, variables, progress, cancellationToken);
-            if (ran.Value is not { } report)
+            if (!ran.TryGet(out var report))
                 return ran;
 
             var after = await sweeps.AfterRunAsync(state.Host, found.Repository, cancellationToken);
@@ -120,19 +121,19 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
     {
         var host = state.Host;
         if (image is not null && state.Home is null)
-            return Answer.Failed<BuildReport>(Messages.HomeUnknown(host.Name));
+            return Answer.Failed(Messages.HomeUnknown(host.Name), type: Refusals.NoHome);
 
         progress.Report(new JobProgress(1, 5, $"delivering {copy.Repository} ({copy.Branch}) to {host.Name}"));
         var delivered = await builder.DeliverAsync(host, copy, false, cancellationToken);
-        if (delivered.Value is not { } delivery)
-            return Answer.Failed<BuildReport>(delivered.Error!, delivered.Hint);
+        if (!delivered.TryGet(out var delivery))
+            return delivered.As<BuildReport>();
 
         progress.Report(new JobProgress(2, 5, "mirroring the feeds"));
         foreach (var feed in options.Value.Feeds)
         {
             var mirrored = await builder.MirrorAsync(host, feed.Path, $"feeds/{feed.Name}", cancellationToken);
-            if (mirrored.Value is null)
-                return Answer.Failed<BuildReport>(mirrored.Error!, mirrored.Hint);
+            if (!mirrored.IsSuccess)
+                return mirrored.As<BuildReport>();
         }
 
         var shaped = Shaped(kind, image, arguments, copy.Workspace, state.Home is { } home ? host.RootOn(home) : string.Empty, options.Value.SdkVersion, [.. variables.Keys]);
@@ -142,10 +143,10 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
         {
             progress.Report(new JobProgress(3, 5, $"generating the project from {folder}/{XcodeCommand.Spec}"));
             var generated = await builder.ExecuteAsync(host, copy.Workspace, XcodeCommand.Generation(folder), variables, log, timeout, cancellationToken);
-            if (generated.Value is not { } generation)
-                return Answer.Failed<BuildReport>(generated.Error!, generated.Hint);
+            if (!generated.TryGet(out var generation))
+                return generated.As<BuildReport>();
             if (!generation.IsSuccess)
-                return Answer.Failed<BuildReport>(Messages.GenerationFailed(log), Messages.GenerationHint);
+                return Answer.Failed(Messages.GenerationFailed(log), Messages.GenerationHint, Refusals.NotGenerated);
         }
 
         var simulators = new List<string>();
@@ -155,8 +156,8 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
             {
                 progress.Report(new JobProgress(3, 5, $"cloning the simulator {device}"));
                 var acquired = await builder.AcquireSimulatorAsync(host, device, $"{XcodeCommand.SimulatorPrefix}{Path.GetRandomFileName()[..6]}", cancellationToken);
-                if (acquired.Value is not { } udid)
-                    return Answer.Failed<BuildReport>(acquired.Error!, acquired.Hint);
+                if (!acquired.TryGet(out var udid))
+                    return acquired.As<BuildReport>();
 
                 simulators.Add(udid);
             }
@@ -166,16 +167,16 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
             progress.Report(new JobProgress(4, 5, $"running {string.Join(' ', command)}; log {log}"));
 
             var executed = await builder.ExecuteAsync(host, copy.Workspace, command, variables, log, timeout, cancellationToken);
-            if (executed.Value is not { } execution)
-                return Answer.Failed<BuildReport>(executed.Error!, executed.Hint);
+            if (!executed.TryGet(out var execution))
+                return executed.As<BuildReport>();
 
             var supplied = await LackingAsync(state, kind, image, copy.Workspace, execution, progress, cancellationToken);
             if (supplied.Count > 0)
             {
                 progress.Report(new JobProgress(4, 5, $"running {string.Join(' ', command)} again, with {string.Join(' ', supplied)} in place"));
                 executed = await builder.ExecuteAsync(host, copy.Workspace, command, variables, log, timeout, cancellationToken);
-                if (executed.Value is not { } again)
-                    return Answer.Failed<BuildReport>(executed.Error!, executed.Hint);
+                if (!executed.TryGet(out var again))
+                    return executed.As<BuildReport>();
 
                 execution = again with { Took = execution.Took + again.Took };
             }
@@ -204,7 +205,7 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
 
         var supplied = await SuppliedAsync(state.Host, lack with { Folder = key.CopyFolder }, progress, cancellationToken);
 
-        return supplied.Value ?? [];
+        return supplied.TryGet(out var words) ? words : [];
     }
 
     /// <summary>The arguments as the kind shapes them for the workspace: docker run of <paramref name="image"/> around dotnet when the run is in a container; otherwise derived data under the root for xcodebuild, the owner label and the project for docker, the script's path for a script, and as given for the rest.</summary>
@@ -226,11 +227,11 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
     public static Answer<string> ScriptOf(LocalCopy copy, IReadOnlyList<string> arguments)
     {
         if (ScriptCommand.PathOf(arguments) is not { } path)
-            return Answer.Failed<string>(Messages.NoScriptNamed);
+            return Answer.Failed(Messages.NoScriptNamed, type: Refusals.Arguments);
         if (!ScriptCommand.IsInside(path))
-            return Answer.Failed<string>(Messages.ScriptOutside(path));
+            return Answer.Failed(Messages.ScriptOutside(path), type: Refusals.Outside);
         if (!File.Exists(Path.Combine(copy.Path, path)))
-            return Answer.Failed<string>(Messages.NoScript(path, copy.Path));
+            return Answer.Failed(Messages.NoScript(path, copy.Path), type: Refusals.Absent);
 
         return Answer.Ok(path);
     }
@@ -250,8 +251,8 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
     public static string ToolWord(BuildKind kind) => kind.ToString().ToLowerInvariant();
 
     /// <summary>The kind a tool was given, or why the word is not one.</summary>
-    public static Answer<BuildKind?> KindOf(string word) =>
+    public static Answer<BuildKind> KindOf(string word) =>
         Enum.TryParse<BuildKind>(word, true, out var kind) && Enum.IsDefined(kind)
-            ? Answer.Ok<BuildKind?>(kind)
-            : Answer.Failed<BuildKind?>(Messages.UnknownKind(word));
+            ? Answer.Ok(kind)
+            : Answer.Failed(Messages.UnknownKind(word), type: Refusals.Arguments);
 }

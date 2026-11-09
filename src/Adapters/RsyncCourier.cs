@@ -3,6 +3,7 @@ using Snail.MCP.BuildBridge.Application;
 using Snail.MCP.BuildBridge.Application.Ports;
 using Snail.MCP.BuildBridge.Configuration;
 using Snail.MCP.BuildBridge.Domain;
+using Snail.Sdk.Mcp.Hosting.Answers;
 
 namespace Snail.MCP.BuildBridge.Adapters;
 
@@ -21,7 +22,7 @@ public sealed class RsyncCourier(IPrograms programs, ICopies copies, RemoteShell
         var words = shell.Command(host, RemoteShell.Prelude(host) + $"mkdir -p {RemoteShell.Under(host, key.CopyFolder)}");
         var made = await programs.RunAsync(words[0], words[1..], null, TimeSpan.FromSeconds(options.Value.ProbeSeconds), cancellationToken);
         if (!made.IsSuccess)
-            return Answer.Failed<Delivery>(Messages.DeliveryFailed(host.Name, Rsync.Reason(made)));
+            return Answer.Failed(Messages.DeliveryFailed(host.Name, Rsync.Reason(made)), type: Refusals.NotDelivered);
 
         var ignoredHere = await copies.IgnoredAsync(copy, cancellationToken);
         var ignoredThere = await IgnoredOnHostAsync(host, key, cancellationToken);
@@ -31,9 +32,9 @@ public sealed class RsyncCourier(IPrograms programs, ICopies copies, RemoteShell
         var arguments = Rsync.Arguments(options.Value, host, isDryRun, true, $"{copy.Path}/", $"{RemoteShell.Rsync(host, key.CopyFolder)}/");
         var run = await programs.RunAsync(options.Value.Rsync, arguments, null, TimeSpan.FromSeconds(options.Value.TransferSeconds), cancellationToken, excludes);
         if (run.IsMissing)
-            return Answer.Failed<Delivery>(Messages.ProgramMissing(options.Value.Rsync));
+            return Answer.Failed(Messages.ProgramMissing(options.Value.Rsync), type: Refusals.NotInstalled);
         if (!run.IsSuccess)
-            return Answer.Failed<Delivery>(Messages.DeliveryFailed(host.Name, Rsync.Reason(run)));
+            return Answer.Failed(Messages.DeliveryFailed(host.Name, Rsync.Reason(run)), type: Refusals.NotDelivered);
 
         return Answer.Ok(new Delivery(key, Rsync.Changed(run.Output), Rsync.TransferredBytes(run.Output), clock.GetElapsedTime(started), isDryRun));
     }

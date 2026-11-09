@@ -111,6 +111,9 @@ public static class Messages
     /// <summary>A log that is not one of this server's.</summary>
     public static string NotALog(string path, string folder) => $"{path} is not a log of this server; its logs are under {folder}.";
 
+    /// <summary>A log of the jobs folder that is not there, or is no file.</summary>
+    public static string NoLog(string path) => $"There is no log at {path}; build_run names the log of each run in its result.";
+
     /// <summary>A job this server does not know.</summary>
     public static string UnknownJob(string uri) => $"No job of this server is {uri}.";
 

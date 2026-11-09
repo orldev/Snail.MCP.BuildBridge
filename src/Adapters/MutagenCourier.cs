@@ -6,6 +6,7 @@ using Snail.MCP.BuildBridge.Application;
 using Snail.MCP.BuildBridge.Application.Ports;
 using Snail.MCP.BuildBridge.Configuration;
 using Snail.MCP.BuildBridge.Domain;
+using Snail.Sdk.Mcp.Hosting.Answers;
 
 namespace Snail.MCP.BuildBridge.Adapters;
 
@@ -41,7 +42,7 @@ public sealed class MutagenCourier(IPrograms programs, ICopies copies, RsyncCour
         var words = shell.Command(host, RemoteShell.Prelude(host) + $"mkdir -p {RemoteShell.Under(host, key.CopyFolder)}");
         var made = await programs.RunAsync(words[0], words[1..], null, TimeSpan.FromSeconds(options.Value.ProbeSeconds), cancellationToken);
         if (!made.IsSuccess)
-            return Answer.Failed<Delivery>(Messages.DeliveryFailed(host.Name, Rsync.Reason(made)));
+            return Answer.Failed(Messages.DeliveryFailed(host.Name, Rsync.Reason(made)), type: Refusals.NotDelivered);
 
         var ignored = await copies.IgnoredAsync(copy, cancellationToken);
         var gitignore = await copies.IgnorePatternsAsync(copy, cancellationToken);
@@ -53,19 +54,19 @@ public sealed class MutagenCourier(IPrograms programs, ICopies copies, RsyncCour
 
         var found = await SessionAsync(session, cancellationToken);
         if (found.IsMissing)
-            return Answer.Failed<Delivery>(Messages.ProgramMissing(options.Value.Mutagen), Messages.InstallMutagen);
+            return Answer.Failed(Messages.ProgramMissing(options.Value.Mutagen), Messages.InstallMutagen, Refusals.NotInstalled);
         if (found.Shape is not null && found.Shape != shape)
             await TerminateAsync(session, cancellationToken);
         if (found.Shape != shape)
         {
             var created = await CreateAsync(session, shape, copy.Path, beta, patterns, cancellationToken);
             if (!created.IsSuccess)
-                return Answer.Failed<Delivery>(Messages.SessionFailed(session, Rsync.Reason(created)));
+                return Answer.Failed(Messages.SessionFailed(session, Rsync.Reason(created)), type: Refusals.NotDelivered);
         }
 
         var flushed = await programs.RunAsync(options.Value.Mutagen, ["sync", "flush", session], null, TimeSpan.FromSeconds(options.Value.TransferSeconds), cancellationToken);
         if (!flushed.IsSuccess)
-            return Answer.Failed<Delivery>(Messages.SessionFailed(session, Rsync.Reason(flushed)));
+            return Answer.Failed(Messages.SessionFailed(session, Rsync.Reason(flushed)), type: Refusals.NotDelivered);
 
         return Answer.Ok(new Delivery(key, [], 0, clock.GetElapsedTime(started), false, Delivery.Mutagen));
     }

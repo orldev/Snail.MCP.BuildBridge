@@ -7,6 +7,7 @@ using Snail.MCP.BuildBridge.Application;
 using Snail.MCP.BuildBridge.Application.Ports;
 using Snail.MCP.BuildBridge.Configuration;
 using Snail.Sdk.Mcp.Hosting;
+using Snail.Sdk.Mcp.Hosting.Answers;
 
 namespace Snail.MCP.BuildBridge.Tools;
 
@@ -42,7 +43,7 @@ public sealed class DiagnosticsTools(Hosts hosts, IPrograms programs, IOptions<B
             ["settingsFile"] = ServerSettings.FileOf(BuildSettings.Name)
         };
 
-        return ToolResponse.Success(state);
+        return ToolAnswer.Ok(state);
     }
 
     /// <summary>The first line a program answers its version with, or null when it is not installed.</summary>

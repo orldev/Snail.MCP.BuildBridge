@@ -1,5 +1,6 @@
 using Snail.MCP.BuildBridge.Application.Ports;
 using Snail.MCP.BuildBridge.Domain;
+using Snail.Sdk.Mcp.Hosting.Answers;
 
 namespace Snail.MCP.BuildBridge.Application;
 
@@ -11,12 +12,12 @@ public sealed class Deliveries(Hosts hosts, ICopies copies, IBuilder builder, Wo
     public async Task<Answer<Delivery>> DeliverAsync(string path, string? host, bool isDryRun, CancellationToken cancellationToken)
     {
         var copy = await copies.ReadAsync(path, cancellationToken);
-        if (copy.Value is not { } found)
-            return Answer.Failed<Delivery>(copy.Error!, copy.Hint);
+        if (!copy.TryGet(out var found))
+            return copy.As<Delivery>();
 
         var ready = await hosts.ReadyAsync(host, [], cancellationToken);
-        if (ready.Value is not { } state)
-            return Answer.Failed<Delivery>(ready.Error!, ready.Hint);
+        if (!ready.TryGet(out var state))
+            return ready.As<Delivery>();
 
         if (isDryRun)
             return await builder.DeliverAsync(state.Host, found, true, cancellationToken);

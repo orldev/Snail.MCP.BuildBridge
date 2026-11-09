@@ -25,6 +25,7 @@ public sealed class HostsTests
         Assert.Null(answer.Value);
         Assert.Equal(Messages.NoHosts, answer.Error);
         Assert.Equal(Messages.NoHostsHint, answer.Hint);
+        Assert.Equal("noHosts", answer.Type);
     }
 
     [Fact]
@@ -39,6 +40,7 @@ public sealed class HostsTests
         var answer = Of(new FakeBuilder(), Mini, Studio).Named("laptop");
 
         Assert.Contains("mini, studio", answer.Error, StringComparison.Ordinal);
+        Assert.Equal("noSuchHost", answer.Type);
     }
 
     [Fact]
@@ -55,6 +57,7 @@ public sealed class HostsTests
         Assert.Null(answer.Value);
         Assert.Contains("mini is down", answer.Error, StringComparison.Ordinal);
         Assert.Equal(Messages.HostDownHint, answer.Hint);
+        Assert.Equal("unreachable", answer.Type);
     }
 
     [Fact]
@@ -69,6 +72,7 @@ public sealed class HostsTests
         Assert.NotNull(dotnet.Value);
         Assert.Null(xcode.Value);
         Assert.Contains("no xcode", xcode.Error, StringComparison.Ordinal);
+        Assert.Equal("noToolchain", xcode.Type);
     }
 
     /// <summary>An Android build takes the toolchain under the root or docker: a host with either takes it, one with neither is told of both.</summary>

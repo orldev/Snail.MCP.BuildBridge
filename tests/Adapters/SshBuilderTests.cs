@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using Snail.MCP.BuildBridge.Adapters;
 using Snail.MCP.BuildBridge.Configuration;
 using Snail.MCP.BuildBridge.Tests.Support;
+using Snail.Sdk.Mcp.Hosting.Sessions;
 using Snail.Sdk.Mcp.Testing;
 
 namespace Snail.MCP.BuildBridge.Tests.Adapters;
@@ -170,6 +171,7 @@ public sealed class SshBuilderTests
 
         Assert.Null(answer.Value);
         Assert.Contains("not a path inside the workspace", answer.Error, StringComparison.Ordinal);
+        Assert.Equal(Reached.Outside, answer.Type);
     }
 
     /// <summary>The run's variables reach the command's environment through the shell's standard input: the command sees them, the command line never carried them.</summary>
@@ -436,6 +438,7 @@ public sealed class SshBuilderTests
 
         Assert.Null(answer.Value);
         Assert.Contains("No simulator was cloned", answer.Error, StringComparison.Ordinal);
+        Assert.Equal("noSimulator", answer.Type);
     }
 
     [HostFact]

@@ -5,6 +5,7 @@ using Snail.MCP.BuildBridge.Application;
 using Snail.MCP.BuildBridge.Application.Ports;
 using Snail.MCP.BuildBridge.Configuration;
 using Snail.MCP.BuildBridge.Domain;
+using Snail.Sdk.Mcp.Hosting.Answers;
 
 namespace Snail.MCP.BuildBridge.Adapters;
 
@@ -77,13 +78,13 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
         var run = await programs.RunToLogAsync(words[0], words[1..], null, log, timeout, cancellationToken);
 
         if (run.IsMissing)
-            return Answer.Failed<Provisioned>(Messages.ProgramMissing(words[0]));
+            return Answer.Failed(Messages.ProgramMissing(words[0]), type: Refusals.NotInstalled);
         if (run.IsTimedOut)
-            return Answer.Failed<Provisioned>(Messages.ProvisionFailed(host.Name, Messages.TimedOut(timeout)));
+            return Answer.Failed(Messages.ProvisionFailed(host.Name, Messages.TimedOut(timeout)), type: Refusals.Timeout);
 
         var steps = ProvisionScripts.Steps(await File.ReadAllTextAsync(log, cancellationToken));
         if (steps.Count == 0)
-            return Answer.Failed<Provisioned>(Messages.ProvisionFailed(host.Name, $"exit code {run.ExitCode}; see {log}"));
+            return Answer.Failed(Messages.ProvisionFailed(host.Name, $"exit code {run.ExitCode}; see {log}"), type: Refusals.NotProvisioned);
 
         return Answer.Ok(new Provisioned(host, steps, log));
     }
@@ -92,7 +93,7 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
     public async Task<Answer<Delivery>> DeliverAsync(Host host, LocalCopy copy, bool isDryRun, CancellationToken cancellationToken)
     {
         var delivered = await courier.DeliverAsync(host, copy, isDryRun, cancellationToken);
-        if (delivered.Value is not { } delivery)
+        if (!delivered.TryGet(out var delivery))
             return delivered;
 
         if (!isDryRun)
@@ -107,15 +108,15 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
         var key = new WorkspaceKey(relative, string.Empty);
         var made = await RunScriptAsync(host, $"mkdir -p {RemoteShell.Under(host, relative)}", cancellationToken);
         if (!made.IsSuccess)
-            return Answer.Failed<Delivery>(Messages.DeliveryFailed(host.Name, Rsync.Reason(made)));
+            return Answer.Failed(Messages.DeliveryFailed(host.Name, Rsync.Reason(made)), type: Refusals.NotDelivered);
 
         var started = clock.GetTimestamp();
         var arguments = Rsync.Arguments(options.Value, host, false, false, $"{source.TrimEnd('/')}/", $"{RemoteShell.Rsync(host, relative)}/");
         var run = await programs.RunAsync(options.Value.Rsync, arguments, null, TimeSpan.FromSeconds(options.Value.TransferSeconds), cancellationToken);
         if (run.IsMissing)
-            return Answer.Failed<Delivery>(Messages.ProgramMissing(options.Value.Rsync));
+            return Answer.Failed(Messages.ProgramMissing(options.Value.Rsync), type: Refusals.NotInstalled);
         if (!run.IsSuccess)
-            return Answer.Failed<Delivery>(Messages.DeliveryFailed(host.Name, Rsync.Reason(run)));
+            return Answer.Failed(Messages.DeliveryFailed(host.Name, Rsync.Reason(run)), type: Refusals.NotDelivered);
 
         return Answer.Ok(new Delivery(key, Rsync.Changed(run.Output), Rsync.TransferredBytes(run.Output), clock.GetElapsedTime(started), false));
     }
@@ -156,7 +157,7 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
         }
 
         if (run.IsMissing)
-            return Answer.Failed<Execution>(Messages.ProgramMissing(words[0]));
+            return Answer.Failed(Messages.ProgramMissing(words[0]), type: Refusals.NotInstalled);
         if (run.IsTimedOut)
             await StopAsync(host, pidFile);
 
@@ -169,11 +170,11 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
     {
         var run = await RunScriptAsync(host, $"xcrun simctl clone {RemoteShell.Quoted(device)} {RemoteShell.Quoted(clone)}", cancellationToken, TimeSpan.FromSeconds(options.Value.TransferSeconds));
         if (!run.IsSuccess)
-            return Answer.Failed<string>(Messages.SimulatorFailed(device, Rsync.Reason(run)), Messages.SimulatorHint);
+            return Answer.Failed(Messages.SimulatorFailed(device, Rsync.Reason(run)), Messages.SimulatorHint, Refusals.NoSimulator);
 
         string udid = run.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? string.Empty;
 
-        return udid.Length > 0 ? Answer.Ok(udid) : Answer.Failed<string>(Messages.SimulatorFailed(device, "simctl named no device"), Messages.SimulatorHint);
+        return udid.Length > 0 ? Answer.Ok(udid) : Answer.Failed(Messages.SimulatorFailed(device, "simctl named no device"), Messages.SimulatorHint, Refusals.NoSimulator);
     }
 
     /// <inheritdoc/>
@@ -189,7 +190,7 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
     {
         var astray = paths.FirstOrDefault(path => Path.IsPathRooted(path) || path.Split('/').Contains(".."));
         if (astray is not null)
-            return Answer.Failed<Collected>(Messages.CollectionFailed(host.Name, $"{astray} is not a path inside the workspace."));
+            return Answer.Failed(Messages.CollectionFailed(host.Name, $"{astray} is not a path inside the workspace."), type: Refusals.Outside);
 
         long bytes = 0;
         foreach (var path in paths)
@@ -200,9 +201,9 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
             var arguments = Rsync.Arguments(options.Value, host, false, false, RemoteShell.Rsync(host, $"{key.CopyFolder}/{path}"), $"{into}/");
             var run = await programs.RunAsync(options.Value.Rsync, arguments, null, TimeSpan.FromSeconds(options.Value.TransferSeconds), cancellationToken);
             if (run.IsMissing)
-                return Answer.Failed<Collected>(Messages.ProgramMissing(options.Value.Rsync));
+                return Answer.Failed(Messages.ProgramMissing(options.Value.Rsync), type: Refusals.NotInstalled);
             if (!run.IsSuccess)
-                return Answer.Failed<Collected>(Messages.CollectionFailed(host.Name, Rsync.Reason(run)));
+                return Answer.Failed(Messages.CollectionFailed(host.Name, Rsync.Reason(run)), type: Refusals.NotCollected);
 
             bytes += Rsync.TransferredBytes(run.Output);
         }
@@ -240,7 +241,7 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
 
         var run = await RunScriptAsync(host, script, cancellationToken, TimeSpan.FromSeconds(options.Value.RunSeconds));
         if (!run.IsSuccess)
-            return Answer.Failed<IReadOnlyList<string>>(Messages.SupplyFailed(host.Name, supply.Words, Rsync.Reason(run)));
+            return Answer.Failed(Messages.SupplyFailed(host.Name, supply.Words, Rsync.Reason(run)), type: Refusals.NotSupplied);
 
         var lines = run.Output.Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         string root = lines.FirstOrDefault(line => line.StartsWith("s3l-root ", StringComparison.Ordinal))?[9..] ?? host.Root;
@@ -249,9 +250,9 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
         return said switch
         {
             ["s3l-supply", "ok", .. var installed] => Answer.Ok((supply with { Names = installed }).Words),
-            ["s3l-supply", "none"] => Answer.Failed<IReadOnlyList<string>>(Messages.HostCannot(host.Name, supply.Kind == SupplyKind.AndroidPackages ? "android" : "dotnet"), Messages.ProvisionFirst),
-            ["s3l-supply", "left", .. var left] => Answer.Failed<IReadOnlyList<string>>(Messages.SupplyFailed(host.Name, (supply with { Names = left }).Words, LastLineOf(run.Error)), supply.Kind == SupplyKind.AndroidPackages ? Messages.SupplyHint(root) : null),
-            _ => Answer.Failed<IReadOnlyList<string>>(Messages.SupplyFailed(host.Name, supply.Words, "the installer said nothing this server reads"))
+            ["s3l-supply", "none"] => Answer.Failed(Messages.HostCannot(host.Name, supply.Kind == SupplyKind.AndroidPackages ? "android" : "dotnet"), Messages.ProvisionFirst, Refusals.NoToolchain),
+            ["s3l-supply", "left", .. var left] => Answer.Failed(Messages.SupplyFailed(host.Name, (supply with { Names = left }).Words, LastLineOf(run.Error)), supply.Kind == SupplyKind.AndroidPackages ? Messages.SupplyHint(root) : null, Refusals.NotSupplied),
+            _ => Answer.Failed(Messages.SupplyFailed(host.Name, supply.Words, "the installer said nothing this server reads"), type: Refusals.NotSupplied)
         };
     }
 
@@ -311,7 +312,7 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
     {
         var run = await RunScriptAsync(host, Surveys.Script(host), cancellationToken, TimeSpan.FromSeconds(options.Value.TransferSeconds));
         if (!run.IsSuccess)
-            return Answer.Failed<Survey>(Messages.SurveyFailed(host.Name, Rsync.Reason(run)));
+            return Answer.Failed(Messages.SurveyFailed(host.Name, Rsync.Reason(run)), type: Refusals.NotSurveyed);
 
         return Answer.Ok(Surveys.Of(host, run.Output));
     }
@@ -344,7 +345,7 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
 
         var run = await RunScriptAsync(host, script, cancellationToken, TimeSpan.FromMinutes(30));
         if (!run.IsSuccess)
-            return Answer.Failed<bool>(Rsync.Reason(run));
+            return Answer.Failed(Rsync.Reason(run));
 
         return Answer.Ok(run.Output.Contains("removed", StringComparison.Ordinal));
     }
@@ -369,7 +370,7 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
         var run = await RunScriptAsync(host, $"if [ -f {marker} ]; then rm -rf {workspace} && echo removed; else echo kept; fi", cancellationToken);
 
         if (!run.IsSuccess)
-            return Answer.Failed<bool>(Messages.HostDown(host.Name, host.Address, Rsync.Reason(run)));
+            return Answer.Failed(Messages.HostDown(host.Name, host.Address, Rsync.Reason(run)), type: Refusals.Unreachable);
 
         return Answer.Ok(run.Output.Contains("removed", StringComparison.Ordinal));
     }

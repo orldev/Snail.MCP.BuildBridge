@@ -1,6 +1,7 @@
 using Snail.MCP.BuildBridge.Application;
 using Snail.MCP.BuildBridge.Application.Ports;
 using Snail.MCP.BuildBridge.Domain;
+using Snail.Sdk.Mcp.Hosting.Answers;
 
 namespace Snail.MCP.BuildBridge.Adapters;
 
@@ -20,11 +21,11 @@ public sealed class GitCopies(IPrograms programs) : ICopies
     {
         var run = await programs.RunAsync("git", ["-C", path, "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir", "--git-common-dir", "HEAD", "--abbrev-ref", "HEAD"], null, Patience, cancellationToken);
         if (run.IsMissing)
-            return Answer.Failed<LocalCopy>(Messages.ProgramMissing("git"));
+            return Answer.Failed(Messages.ProgramMissing("git"), type: Refusals.NotInstalled);
 
         var lines = run.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (!run.IsSuccess || lines.Length < 5)
-            return Answer.Failed<LocalCopy>(Messages.NotACopy(path));
+            return Answer.Failed(Messages.NotACopy(path), type: Refusals.NotACopy);
 
         string top = lines[0];
         bool isWorktree = !string.Equals(lines[1], lines[2], StringComparison.Ordinal);

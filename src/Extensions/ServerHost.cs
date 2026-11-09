@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Snail.Sdk.Mcp.Hosting;
+using Snail.Sdk.Mcp.Hosting.Discovery;
 
 namespace Snail.MCP.BuildBridge.Extensions;
 
@@ -13,7 +14,7 @@ public static class ServerHost
         var builder = McpHost.CreateBuilder(args);
 
         builder.Services.AddBuilders();
-        builder.Services.AddMcpServer(ServerRegistration.Describe).WithStdioServerTransport().WithServerTools();
+        builder.Services.AddMcpServer(ServerRegistration.Describe).ExplainFailures().WithStdioServerTransport().WithServerTools().WithArgumentCheck();
 
         return builder.Build().RunAsync();
     }

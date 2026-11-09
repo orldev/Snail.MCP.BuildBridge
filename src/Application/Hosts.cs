@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using Snail.MCP.BuildBridge.Application.Ports;
 using Snail.MCP.BuildBridge.Configuration;
 using Snail.MCP.BuildBridge.Domain;
+using Snail.Sdk.Mcp.Hosting.Answers;
 
 namespace Snail.MCP.BuildBridge.Application;
 
@@ -16,14 +17,14 @@ public sealed class Hosts(IOptions<BuildOptions> options, IBuilder builder)
     {
         var hosts = All;
         if (hosts.Count == 0)
-            return Answer.Failed<Host>(Messages.NoHosts, Messages.NoHostsHint);
+            return Answer.Failed(Messages.NoHosts, Messages.NoHostsHint, Refusals.NoHosts);
         if (string.IsNullOrWhiteSpace(name))
             return Answer.Ok(hosts[0]);
 
         var named = hosts.FirstOrDefault(host => string.Equals(host.Name, name, StringComparison.OrdinalIgnoreCase));
 
         return named is null
-            ? Answer.Failed<Host>(Messages.UnknownHost(name, hosts.Select(host => host.Name)))
+            ? Answer.Failed(Messages.UnknownHost(name, hosts.Select(host => host.Name)), type: Refusals.NoSuchHost)
             : Answer.Ok(named);
     }
 
@@ -39,14 +40,14 @@ public sealed class Hosts(IOptions<BuildOptions> options, IBuilder builder)
     public async Task<Answer<HostState>> ReadyAsync(string? name, IReadOnlyList<Capability> needs, CancellationToken cancellationToken)
     {
         var named = Named(name);
-        if (named.Value is not { } host)
-            return Answer.Failed<HostState>(named.Error!, named.Hint);
+        if (!named.TryGet(out var host))
+            return named.As<HostState>();
 
         var state = await builder.ProbeAsync(host, cancellationToken);
         if (!state.IsReachable)
-            return Answer.Failed<HostState>(state.Note ?? Messages.HostDown(host.Name, host.Address, "no answer"), Messages.HostDownHint);
+            return Answer.Failed(state.Note ?? Messages.HostDown(host.Name, host.Address, "no answer"), Messages.HostDownHint, Refusals.Unreachable);
         if (needs.Count > 0 && !needs.Any(state.Has))
-            return Answer.Failed<HostState>(Messages.HostCannot(host.Name, string.Join(" or ", needs.Select(capability => capability.ToString().ToLowerInvariant()))));
+            return Answer.Failed(Messages.HostCannot(host.Name, string.Join(" or ", needs.Select(capability => capability.ToString().ToLowerInvariant()))), type: Refusals.NoToolchain);
 
         return Answer.Ok(state);
     }

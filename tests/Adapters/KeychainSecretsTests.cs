@@ -31,6 +31,7 @@ public sealed class KeychainSecretsTests
 
         Assert.Null(answer.Value);
         Assert.Contains("TOKEN", answer.Error, StringComparison.Ordinal);
+        Assert.Equal("noSecret", answer.Type);
         Assert.Contains("security add-generic-password", answer.Hint, StringComparison.Ordinal);
     }
 }

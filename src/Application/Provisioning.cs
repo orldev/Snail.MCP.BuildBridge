@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using Snail.MCP.BuildBridge.Application.Ports;
 using Snail.MCP.BuildBridge.Configuration;
 using Snail.MCP.BuildBridge.Domain;
+using Snail.Sdk.Mcp.Hosting.Answers;
 
 namespace Snail.MCP.BuildBridge.Application;
 
@@ -12,8 +13,8 @@ public sealed class Provisioning(Hosts hosts, IBuilder builder, Logs logs, IOpti
     public async Task<Answer<Provisioned>> RunAsync(string? host, CancellationToken cancellationToken)
     {
         var ready = await hosts.ReadyAsync(host, [], cancellationToken);
-        if (ready.Value is not { } state)
-            return Answer.Failed<Provisioned>(ready.Error!, ready.Hint);
+        if (!ready.TryGet(out var state))
+            return ready.As<Provisioned>();
 
         string log = logs.New("provision");
         var timeout = TimeSpan.FromSeconds(options.Value.RunSeconds);

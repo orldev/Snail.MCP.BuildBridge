@@ -2,7 +2,9 @@ using Microsoft.Extensions.Options;
 using Snail.MCP.BuildBridge.Application;
 using Snail.MCP.BuildBridge.Configuration;
 using Snail.MCP.BuildBridge.Tools;
+using Snail.Sdk.Mcp.Hosting;
 using Snail.Sdk.Mcp.Hosting.Jobs;
+using Snail.Sdk.Mcp.Hosting.Sessions;
 using Snail.Sdk.Mcp.Testing;
 
 namespace Snail.MCP.BuildBridge.Tests.Application;
@@ -66,6 +68,7 @@ public sealed class RunsTests
 
         Assert.Null(answer.Value);
         Assert.Contains("no xcode", answer.Error, StringComparison.Ordinal);
+        Assert.Equal("noToolchain", answer.Type);
         Assert.Empty(builder.Delivered);
     }
 
@@ -187,16 +190,17 @@ public sealed class RunsTests
     }
 
     [Theory]
-    [InlineData("tools/missing.sh")]
-    [InlineData("../elsewhere.sh")]
-    [InlineData("/usr/bin/true")]
-    public async Task RunAsync_AScriptNotOfTheCopy_RunsNothing(string script)
+    [InlineData("tools/missing.sh", Reached.Absent)]
+    [InlineData("../elsewhere.sh", Reached.Outside)]
+    [InlineData("/usr/bin/true", Reached.Outside)]
+    public async Task RunAsync_AScriptNotOfTheCopy_RunsNothing(string script, string type)
     {
         var (runs, builder) = Of([]);
 
         var answer = await runs.RunAsync("/Users/me/Sample", BuildKind.Script, [script], [], [], null, new Steps(), CancellationToken.None);
 
         Assert.NotNull(answer.Error);
+        Assert.Equal(type, answer.Type);
         Assert.Empty(builder.Executed);
         Assert.Empty(builder.Delivered);
     }
@@ -238,6 +242,18 @@ public sealed class RunsTests
         Assert.Equal(["dotnet", "test"], command.TakeLast(2));
     }
 
+    [Fact]
+    public async Task RunAsync_InAContainerOnAHostThatNamedNoHome_RunsNothingAndIsNoHome()
+    {
+        var (runs, builder) = Of([Capability.Docker]);
+        builder.Up[Mini.Name] = builder.Up[Mini.Name] with { Home = null };
+
+        var answer = await runs.RunAsync("/Users/me/Sample", BuildKind.Linux, ["test"], [], [], null, new Steps(), CancellationToken.None);
+
+        Assert.Equal("noHome", answer.Type);
+        Assert.Empty(builder.Delivered);
+    }
+
     /// <summary>With the toolchain under the root, an Android build is dotnet on the host, the prelude naming the SDK and the JDK; without it, docker runs the Android image.</summary>
     [Fact]
     public async Task RunAsync_AndroidOnAHostWithTheToolchain_RunsDotnetOnTheHostAndInTheImageWithoutIt()
@@ -276,6 +292,7 @@ public sealed class RunsTests
         var answer = await runs.RunAsync("/Users/me/Sample", BuildKind.Android, ["build"], ["platforms;android-37"], [], null, new Steps(), CancellationToken.None);
 
         Assert.Contains("no android", answer.Error, StringComparison.Ordinal);
+        Assert.Equal("noToolchain", answer.Type);
         Assert.Empty(builder.Supplied);
         Assert.Empty(builder.Executed);
     }
@@ -290,6 +307,7 @@ public sealed class RunsTests
         var answer = await runs.RunAsync("/Users/me/Sample", BuildKind.Android, ["build"], [word], [], null, new Steps(), CancellationToken.None);
 
         Assert.Contains("not an Android SDK package", answer.Error, StringComparison.Ordinal);
+        Assert.Equal(ToolFailures.Arguments, answer.Type);
         Assert.Empty(builder.Probed);
     }
 
@@ -406,6 +424,7 @@ public sealed class RunsTests
         var answer = await runs.RunAsync("/Users/me/Sample", BuildKind.Dotnet, ["test"], [], [word], null, new Steps(), CancellationToken.None);
 
         Assert.Contains("NAME=value", answer.Error, StringComparison.Ordinal);
+        Assert.Equal(ToolFailures.Arguments, answer.Type);
         Assert.Empty(builder.Probed);
     }
 
@@ -454,6 +473,7 @@ public sealed class RunsTests
         var answer = await runs.RunAsync(copy, BuildKind.Gradle, ["assembleDebug"], [], [], null, new Steps(), CancellationToken.None);
 
         Assert.Contains("gradlew", answer.Error, StringComparison.Ordinal);
+        Assert.Equal(Reached.Absent, answer.Type);
         Assert.Empty(builder.Executed);
     }
 
@@ -505,6 +525,9 @@ public sealed class RunsTests
     [Fact]
     public void KindOf_UnknownWord_NamesTheKindsThereAre()
     {
-        Assert.Contains(ToolDescriptions.Kinds, Runs.KindOf("make").Error, StringComparison.Ordinal);
+        var answer = Runs.KindOf("make");
+
+        Assert.Contains(ToolDescriptions.Kinds, answer.Error, StringComparison.Ordinal);
+        Assert.Equal(ToolFailures.Arguments, answer.Type);
     }
 }

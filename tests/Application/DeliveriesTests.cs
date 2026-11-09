@@ -42,6 +42,7 @@ public sealed class DeliveriesTests
 
         Assert.Null(answer.Value);
         Assert.Contains("not inside a git working copy", answer.Error, StringComparison.Ordinal);
+        Assert.Equal("notACopy", answer.Type);
         Assert.Empty(builder.Delivered);
     }
 }

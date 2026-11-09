@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using Snail.MCP.BuildBridge.Application;
 using Snail.MCP.BuildBridge.Application.Ports;
 using Snail.MCP.BuildBridge.Configuration;
+using Snail.Sdk.Mcp.Hosting.Answers;
 
 namespace Snail.MCP.BuildBridge.Adapters;
 
@@ -18,8 +19,8 @@ public sealed class KeychainSecrets(IPrograms programs, IOptions<BuildOptions> o
         foreach (var secret in options.Value.Secrets.Where(secret => secret.IsFor(repository)))
         {
             var read = await ValueOfAsync(secret, cancellationToken);
-            if (read.Value is not { } value)
-                return Answer.Failed<IReadOnlyDictionary<string, string>>(read.Error!, read.Hint);
+            if (!read.TryGet(out var value))
+                return read.As<IReadOnlyDictionary<string, string>>();
 
             variables[secret.Name] = value;
         }
@@ -34,7 +35,7 @@ public sealed class KeychainSecrets(IPrograms programs, IOptions<BuildOptions> o
 
         var run = await programs.RunAsync("security", ["find-generic-password", "-s", secret.Keychain, "-w"], null, Patience, cancellationToken);
         if (!run.IsSuccess)
-            return Answer.Failed<string>(Messages.SecretUnread(secret.Name, secret.Keychain, run.IsMissing ? "security is not on this machine" : run.Error.Trim()), Messages.SecretHint(secret.Keychain));
+            return Answer.Failed(Messages.SecretUnread(secret.Name, secret.Keychain, run.IsMissing ? "security is not on this machine" : run.Error.Trim()), Messages.SecretHint(secret.Keychain), Refusals.NoSecret);
 
         return Answer.Ok(run.Output.TrimEnd('\n', '\r'));
     }

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Snail.MCP.BuildBridge.Application;
 using Snail.MCP.BuildBridge.Configuration;
+using Snail.Sdk.Mcp.Hosting;
 
 namespace Snail.MCP.BuildBridge.Tests.Application;
 
@@ -39,6 +40,7 @@ public sealed class SweepsTests
 
         Assert.Null(again.Value);
         Assert.Contains("No plan is", again.Error, StringComparison.Ordinal);
+        Assert.Equal("noSuchPlan", again.Type);
     }
 
     [Fact]
@@ -67,4 +69,13 @@ public sealed class SweepsTests
     [InlineData("caches", SweepScope.Caches)]
     [InlineData("Everything", SweepScope.Everything)]
     public void ScopeOf_AnyCase_IsTheScope(string word, SweepScope expected) => Assert.Equal(expected, Sweeps.ScopeOf(word).Value);
+
+    [Fact]
+    public void ScopeOf_UnknownWord_IsRefusedAsArguments()
+    {
+        var answer = Sweeps.ScopeOf("all");
+
+        Assert.Contains("is not a scope", answer.Error, StringComparison.Ordinal);
+        Assert.Equal(ToolFailures.Arguments, answer.Type);
+    }
 }

@@ -35,6 +35,22 @@ public sealed class StdioContractTests
 
         var answer = await client.CallToolAsync("build_diagnose", new Dictionary<string, object?>());
 
-        Assert.Contains(Assembly, answer.Text(), StringComparison.Ordinal);
+        Assert.True(answer.IsOk(), answer.Text());
+        Assert.Equal(Assembly, answer.Data()!["server"]!.GetValue<string>());
+    }
+
+    /// <summary>
+    /// Settings that fail their validation stop the program before it answers: Snail.Sdk turns the failure of
+    /// ValidateOnStart into one line on stderr and exit code 1, not a crash with a trace and 134.
+    /// </summary>
+    [Fact]
+    public async Task Start_WithATimeOfZero_StopsInOneLineNamingTheProblem()
+    {
+        var refused = await Assert.ThrowsAsync<ServerExitedException>(() =>
+            ServerProgram.StartAsync(Assembly, Variable, new Dictionary<string, string?> { ["SNAIL_MCP_BUILDBRIDGE_RUN_SECONDS"] = "0" }));
+
+        Assert.Equal(1, refused.ExitCode);
+        Assert.Equal("SNAIL_MCP_BUILDBRIDGE_RUN_SECONDS (or RunSeconds in the settings file) is '0'; it is a number of seconds above zero.", Assert.Single(refused.Stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)));
+        Assert.DoesNotContain("   at ", refused.Stderr, StringComparison.Ordinal);
     }
 }

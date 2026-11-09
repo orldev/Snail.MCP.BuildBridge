@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Snail.MCP.BuildBridge.Application.Ports;
 using Snail.MCP.BuildBridge.Configuration;
 using Snail.MCP.BuildBridge.Domain;
+using Snail.Sdk.Mcp.Hosting.Answers;
 
 namespace Snail.MCP.BuildBridge.Application;
 
@@ -22,8 +23,8 @@ public sealed class Sweeps(IBuilder builder, Logs logs, IOptions<BuildOptions> o
     public async Task<Answer<SweepPlan>> PlanAsync(Host host, SweepScope scope, WorkspaceKey? workspace, string? repository, CancellationToken cancellationToken)
     {
         var surveyed = await builder.SurveyAsync(host, cancellationToken);
-        if (surveyed.Value is not { } survey)
-            return Answer.Failed<SweepPlan>(surveyed.Error!, surveyed.Hint);
+        if (!surveyed.TryGet(out var survey))
+            return surveyed.As<SweepPlan>();
 
         var now = clock.GetUtcNow();
         var items = Sweep.Decide(survey, Rules, now, scope, workspace, repository).ToList();
@@ -41,7 +42,7 @@ public sealed class Sweeps(IBuilder builder, Logs logs, IOptions<BuildOptions> o
     public async Task<Answer<IReadOnlyList<SweepResult>>> ApplyAsync(string planId, CancellationToken cancellationToken)
     {
         if (!_plans.TryRemove(planId, out var plan) || !plan.IsCurrent(clock.GetUtcNow()))
-            return Answer.Failed<IReadOnlyList<SweepResult>>(Messages.UnknownPlan(planId));
+            return Answer.Failed(Messages.UnknownPlan(planId), type: Refusals.NoSuchPlan);
 
         return Answer.Ok(await CarryOutAsync(plan.Host, plan.Items, cancellationToken));
     }
@@ -50,7 +51,7 @@ public sealed class Sweeps(IBuilder builder, Logs logs, IOptions<BuildOptions> o
     public async Task<IReadOnlyList<SweepResult>> AfterRunAsync(Host host, string repository, CancellationToken cancellationToken)
     {
         var surveyed = await builder.SurveyAsync(host, cancellationToken);
-        if (surveyed.Value is not { } survey)
+        if (!surveyed.TryGet(out var survey))
             return [];
 
         var now = clock.GetUtcNow();
@@ -68,7 +69,7 @@ public sealed class Sweeps(IBuilder builder, Logs logs, IOptions<BuildOptions> o
             return [];
 
         var planned = await PlanAsync(state.Host, SweepScope.Caches, null, null, cancellationToken);
-        if (planned.Value is not { } plan)
+        if (!planned.TryGet(out var plan))
             return [];
 
         _plans.TryRemove(plan.Id, out _);
@@ -77,10 +78,10 @@ public sealed class Sweeps(IBuilder builder, Logs logs, IOptions<BuildOptions> o
     }
 
     /// <summary>The scope a tool was given, or why the word is not one.</summary>
-    public static Answer<SweepScope?> ScopeOf(string word) =>
+    public static Answer<SweepScope> ScopeOf(string word) =>
         Enum.TryParse<SweepScope>(word, true, out var scope) && Enum.IsDefined(scope)
-            ? Answer.Ok<SweepScope?>(scope)
-            : Answer.Failed<SweepScope?>(Messages.UnknownScope(word));
+            ? Answer.Ok(scope)
+            : Answer.Failed(Messages.UnknownScope(word), type: Refusals.Arguments);
 
     private async Task<IReadOnlyList<SweepResult>> CarryOutAsync(Host host, IReadOnlyList<SweepItem> items, CancellationToken cancellationToken)
     {

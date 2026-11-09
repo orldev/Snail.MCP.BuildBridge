@@ -2,6 +2,7 @@ using Snail.MCP.BuildBridge.Application.Ports;
 using Snail.MCP.BuildBridge.Configuration;
 using Snail.MCP.BuildBridge.Domain;
 using Snail.Sdk.Mcp.Hosting;
+using Snail.Sdk.Mcp.Hosting.Answers;
 
 namespace Snail.MCP.BuildBridge.Application;
 
@@ -16,15 +17,15 @@ public sealed class Collections(Hosts hosts, ICopies copies, IBuilder builder)
     public async Task<Answer<Collected>> FetchAsync(string path, string? host, IReadOnlyList<string> paths, string? into, CancellationToken cancellationToken)
     {
         if (paths.Count == 0)
-            return Answer.Failed<Collected>(Messages.NothingToFetch);
+            return Answer.Failed(Messages.NothingToFetch, type: Refusals.Arguments);
 
         var copy = await copies.ReadAsync(path, cancellationToken);
-        if (copy.Value is not { } found)
-            return Answer.Failed<Collected>(copy.Error!, copy.Hint);
+        if (!copy.TryGet(out var found))
+            return copy.As<Collected>();
 
         var ready = await hosts.ReadyAsync(host, [], cancellationToken);
-        if (ready.Value is not { } state)
-            return Answer.Failed<Collected>(ready.Error!, ready.Hint);
+        if (!ready.TryGet(out var state))
+            return ready.As<Collected>();
 
         string folder = string.IsNullOrWhiteSpace(into) ? FolderOf(found.Workspace) : into;
 

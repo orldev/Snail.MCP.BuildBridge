@@ -38,9 +38,41 @@ dotnet publish src -c Release -r osx-arm64 -p:SnailMcpInstall=true    # ~/.s3l-m
 | `build_clean` | A sweep of a scope, planned and shown first, carried out by its `planId`. |
 | `build_diagnose` | The server's state: version, hosts, the programs it works through, its folders. |
 
-Every answer is JSON with an `ok` flag; a failure carries `error` and a `hint`, and is flagged `isError`. A job answers
-within its `wait` with the result, or with the running job, whose resource `job://buildbridge/<kind>/<id>` carries the
-result once it ends.
+Every answer is JSON with an `ok` flag; a failure carries `error`, a `hint` when there is something to do, and is
+flagged `isError`. A job answers within its `wait` with the result, or with the running job, whose resource
+`job://buildbridge/<kind>/<id>` carries the result once it ends; a job that failed or was cancelled within the wait
+answers as a failure that still carries its report. A run or a provisioning that could not happen — no working copy,
+a host that does not answer, a delivery that broke off — ends its job failed with the error, a hint when there is
+something to do, and the type of what stopped it; a build that ran and failed is a job that succeeded, its result saying
+`success` false with the exit code and the log.
+
+`type` is the word a program branches on, never the words of `error`:
+
+| `type` | when |
+|---|---|
+| `arguments` | a word the call gave cannot be taken: a kind, a scope, a package, a variable, a fetch of nothing, a script not named, a workspace sweep with no copy |
+| `outside` | a log out of the jobs folder, links followed; a script or a fetched path out of the workspace |
+| `noPath` | build_logs with a blank log |
+| `absent` | a log, a script or the gradle wrapper that is not there |
+| `timeout` | a provisioning that ran past its time |
+| `noHosts` | no host is configured |
+| `noSuchHost` | a host the settings do not name |
+| `noSuchJob` | a job this server does not know |
+| `noSuchPlan` | a sweep plan never shown, carried out already, or shown too long ago |
+| `unreachable` | a host that did not answer over ssh |
+| `noToolchain` | a host without the toolchain the build needs: Xcode, Docker, the Android SDK, dotnet |
+| `notACopy` | a path outside any git working copy |
+| `notInstalled` | a program this machine lacks: git, rsync, ssh, mutagen |
+| `noSecret` | a secret the keychain did not give |
+| `noHome` | a host that did not say where its home is, so no container can be given the workspace |
+| `notDelivered` | a copy that did not reach the host, by rsync or a Mutagen session |
+| `notCollected` | paths that were not brought back |
+| `notProvisioned` | a provisioning that broke off before it said what it saw to |
+| `notSupplied` | packages, an SDK or workloads the host could not install |
+| `noSimulator` | a simulator that could not be cloned |
+| `notGenerated` | a project xcodegen did not generate |
+| `notSurveyed` | a host that could not be surveyed for a sweep |
+| `internal` | a failure nobody foresaw — the SDK's word |
 
 ## A run
 
@@ -168,6 +200,13 @@ A host that is this machine — `localhost` — is worked without ssh, straight 
 | `WorkspaceDays`, `JobDays`, `ImageDays`, `BuildCacheHours`, `OutputDays` | 14, 30, 7, 6, 7 | The ages a sweep goes by. |
 | `LowDiskGigabytes` | 20 | Free gigabytes on a host below which a run sweeps the caches first. |
 
+A setting the server cannot use stops it at the start, in one line on stderr and exit code 1, that names the variable,
+its key in the settings file, the value and what it can be — a host's under its index, `SNAIL_MCP_BUILDBRIDGE_HOSTS__0__ADDRESS`:
+
+```text
+SNAIL_MCP_BUILDBRIDGE_RUN_SECONDS (or RunSeconds in the settings file) is '0'; it is a number of seconds above zero.
+```
+
 ## What is swept, and when
 
 | What | Proof it is the server's | Goes when |
@@ -201,5 +240,5 @@ Add it to an MCP client — Claude Code's `~/.claude.json`:
 ```
 
 or install the tool — `dotnet tool install -g Snail.MCP.BuildBridge`, or `dnx Snail.MCP.BuildBridge --yes` without
-installing — and use `s3l-mcp-buildbridge` as the command: on macOS and Linux it is the native program, elsewhere the
-framework-dependent one.
+installing — and use `s3l-mcp-buildbridge` as the command: on macOS and Linux it is the native program. Windows is
+not served: the server works through `/bin/sh`, ssh and rsync, so no win-x64 package is made.

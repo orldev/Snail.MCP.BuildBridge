@@ -1,8 +1,11 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
 using ModelContextProtocol.Server;
+using Snail.MCP.BuildBridge.Application;
 using Snail.MCP.BuildBridge.Configuration;
+using Snail.MCP.BuildBridge.Extensions;
 using Snail.MCP.BuildBridge.Tools;
+using Snail.Sdk.Mcp.Hosting.Answers;
 
 namespace Snail.MCP.BuildBridge.Tests.Tools;
 
@@ -20,6 +23,18 @@ public sealed partial class ToolCatalogTests
         return methods.Select(method => method.GetCustomAttribute<McpServerToolAttribute>()?.Name).OfType<string>();
     }
 
+    /// <summary>Every type a failure of this server carries is named where a model reads the failures, and no word twice.</summary>
+    [Fact]
+    public void Refusals_EveryType_IsNamedInTheInstructionsAndTheReadme()
+    {
+        var types = typeof(Refusals).GetFields().Select(field => (string)field.GetRawConstantValue()!).ToList();
+        string readme = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "README.md"));
+
+        Assert.Equal(types.Count, types.Distinct(StringComparer.Ordinal).Count());
+        Assert.All(types, type => Assert.Matches($@"\b{type}\b", ServerRegistration.Instructions));
+        Assert.All(types, type => Assert.Contains($"| `{type}` |", readme, StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Tools_EveryOne_IsNamedForThisServer()
     {
@@ -30,21 +45,21 @@ public sealed partial class ToolCatalogTests
     public void Capabilities_EveryCapability_IsNamed()
     {
         foreach (var capability in Enum.GetValues<Capability>())
-            Assert.Contains(ToolResponse.Word(capability), Words(ToolDescriptions.Capabilities));
+            Assert.Contains(ToolAnswer.Word(capability), Words(ToolDescriptions.Capabilities));
     }
 
     [Fact]
     public void Kinds_EveryKind_IsNamed()
     {
         foreach (var kind in Enum.GetValues<BuildKind>())
-            Assert.Contains(ToolResponse.Word(kind), Words(ToolDescriptions.Kinds));
+            Assert.Contains(ToolAnswer.Word(kind), Words(ToolDescriptions.Kinds));
     }
 
     [Fact]
     public void Scopes_EveryScope_IsNamed()
     {
         foreach (var scope in Enum.GetValues<SweepScope>())
-            Assert.Contains(ToolResponse.Word(scope), Words(ToolDescriptions.Scopes));
+            Assert.Contains(ToolAnswer.Word(scope), Words(ToolDescriptions.Scopes));
     }
 
     [Fact]

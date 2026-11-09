@@ -54,6 +54,7 @@ public sealed class GitCopiesTests
 
         Assert.Null(answer.Value);
         Assert.Contains("not inside a git working copy", answer.Error, StringComparison.Ordinal);
+        Assert.Equal("notACopy", answer.Type);
     }
 
     [Fact]

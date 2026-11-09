@@ -15,13 +15,13 @@
       "environmentVariables": [
         {
           "name": "SNAIL_MCP_BUILDBRIDGE_HOSTS__0__NAME",
-          "description": "The word the first host is named by, such as mini; add HOSTS__1 and so on for more. The first host is the one a call that names none gets.",
-          "isRequired": true
+          "description": "The word the first host is named by, such as mini; add HOSTS__1 and so on for more. The first host is the one a call that names none gets. Without one the server starts, and a call that needs a host says how to name one.",
+          "isRequired": false
         },
         {
           "name": "SNAIL_MCP_BUILDBRIDGE_HOSTS__0__ADDRESS",
-          "description": "What ssh is given for the first host: an alias from the SSH configuration, or user@host.",
-          "isRequired": true
+          "description": "What ssh is given for the first host: an alias from the SSH configuration, or user@host. Needed once the host is named.",
+          "isRequired": false
         },
         {
           "name": "SNAIL_MCP_BUILDBRIDGE_HOSTS__0__ROOT",

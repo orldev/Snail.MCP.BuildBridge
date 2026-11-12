@@ -9,7 +9,7 @@ namespace Snail.MCP.BuildBridge.Application;
 
 /// <summary>A build of a working copy on a host: the copy delivered, the feeds mirrored, the command run in the workspace, the log read for what the tests said.</summary>
 /// <remarks>One workspace takes one run at a time, through <see cref="WorkspaceTurns"/>: a run that finds the workspace busy waits its turn, and says so in its progress.</remarks>
-public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs logs, Sweeps sweeps, WorkspaceTurns turns, ISecrets secrets, IOptions<BuildOptions> options)
+public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs logs, Feeds feeds, Sweeps sweeps, WorkspaceTurns turns, ISecrets secrets, IOptions<BuildOptions> options)
 {
 
     /// <summary>Runs <paramref name="kind"/>'s program with <paramref name="arguments"/> in the workspace of the copy <paramref name="path"/> lies in, on the host named or the first, with the Android SDK packages <paramref name="needs"/> names put under its root first, and the variables <paramref name="environment"/> assigns and the secrets of the repository in the command's environment.</summary>
@@ -113,6 +113,8 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
         progress.Report(new JobProgress(0, 5, $"supplying {string.Join(' ', supply.Words)} on {host.Name}"));
         using (await turns.TakeAsync(host, supply.Turn, () => progress.Report(new JobProgress(0, 5, $"waiting for the installer on {host.Name}, where another run drives it")), cancellationToken))
         {
+            hosts.Forget(host);
+
             return await builder.SupplyAsync(host, supply, cancellationToken);
         }
     }
@@ -129,12 +131,9 @@ public sealed class Runs(Hosts hosts, ICopies copies, IBuilder builder, Logs log
             return delivered.As<BuildReport>();
 
         progress.Report(new JobProgress(2, 5, "mirroring the feeds"));
-        foreach (var feed in options.Value.Feeds)
-        {
-            var mirrored = await builder.MirrorAsync(host, feed.Path, $"feeds/{feed.Name}", cancellationToken);
-            if (!mirrored.IsSuccess)
-                return mirrored.As<BuildReport>();
-        }
+        var mirrored = await feeds.MirrorAsync(host, cancellationToken);
+        if (!mirrored.IsSuccess)
+            return mirrored.As<BuildReport>();
 
         var shaped = Shaped(kind, image, arguments, copy.Workspace, state.Home is { } home ? host.RootOn(home) : string.Empty, options.Value.SdkVersion, [.. variables.Keys]);
         string log = logs.New(ToolWord(kind));

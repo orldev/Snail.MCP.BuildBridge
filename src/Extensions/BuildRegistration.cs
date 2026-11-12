@@ -20,7 +20,8 @@ public static class BuildRegistration
             services.AddOptions<BuildOptions>().Bind(settings).ValidateOnStart();
             services.AddSingleton<IValidateOptions<BuildOptions>, BuildOptionsValidation>();
             services.AddSingleton(TimeProvider.System);
-            services.AddSingleton<IPrograms, Programs>();
+            services.AddSingleton<Programs>();
+            services.AddSingleton<IPrograms>(provider => new PatientPrograms(provider.GetRequiredService<Programs>(), provider.GetRequiredService<TimeProvider>()));
             services.AddSingleton<ISecrets, KeychainSecrets>();
             services.AddSingleton<ICopies, GitCopies>();
             services.AddSingleton<RemoteShell>();
@@ -35,6 +36,7 @@ public static class BuildRegistration
             services.AddSingleton<Deliveries>();
             services.AddSingleton<Logs>();
             services.AddSingleton<Provisioning>();
+            services.AddSingleton<Feeds>();
             services.AddSingleton<Sweeps>();
             services.AddSingleton<Runs>();
             services.AddSingleton<Collections>();

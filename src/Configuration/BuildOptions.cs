@@ -42,6 +42,9 @@ public sealed class BuildOptions
     /// <summary>The ssh program.</summary>
     public string Ssh { get; set; } = "ssh";
 
+    /// <summary>Minutes the connection to a host stays open after its last command, every command to that host going over it; zero or less opens a connection for each command.</summary>
+    public int SshShareMinutes { get; set; } = 30;
+
     /// <summary>The rsync program on this machine.</summary>
     public string Rsync { get; set; } = "rsync";
 
@@ -62,6 +65,9 @@ public sealed class BuildOptions
 
     /// <summary>Seconds a probe of a host may take: ssh connecting and three version commands.</summary>
     public int ProbeSeconds { get; set; } = 20;
+
+    /// <summary>Seconds a host's answer to a probe is gone by before a run probes it again; zero or less probes before every run.</summary>
+    public int ProbeKeepSeconds { get; set; } = 60;
 
     /// <summary>The .NET SDK provisioning installs under a host's root; empty leaves the host's own dotnet to be used.</summary>
     public string SdkVersion { get; set; } = "10.0.302";
@@ -120,6 +126,21 @@ public sealed class BuildOptions
     /// <summary>Days a workspace may go without a build before a sweep removes it.</summary>
     public int WorkspaceDays { get; set; } = 14;
 
+    /// <summary>Minutes a workspace may go without a delivery or a build before its Mutagen session is paused, holding no connection to the host until the next delivery resumes it; zero or less never pauses one.</summary>
+    public int SessionIdleMinutes { get; set; } = 30;
+
+    /// <summary>The most Mutagen sessions kept awake at once, each holding a connection of the host's sshd, which on a Mac has 42 to give; a delivery that makes one more pauses the one used longest ago. Zero or less sets no limit.</summary>
+    public int SessionsAwake { get; set; } = 30;
+
+    /// <summary>Days a test bundle inside a workspace's copy — an .xcresult, what a test run found — is kept after its last write.</summary>
+    public int ResultDays { get; set; } = 30;
+
+    /// <summary>Minutes between two sweeps after a run of one repository on one host: a run within them ends without surveying the host; zero or less sweeps after every run.</summary>
+    public int SweepMinutes { get; set; } = 10;
+
+    /// <summary>Hours between two sweeps of the whole caches scope — every repository's stale workspaces, old images, the versions an update left behind — carried out by themselves after a run; zero or less leaves that scope to build_clean and to a host short of room.</summary>
+    public int CachesSweepHours { get; set; } = 24;
+
     /// <summary>Days a job's log and artifacts nobody fetched are kept.</summary>
     public int JobDays { get; set; } = 30;
 
@@ -129,7 +150,7 @@ public sealed class BuildOptions
     /// <summary>Hours of Docker's build cache kept when the cache is pruned, after every run.</summary>
     public int BuildCacheHours { get; set; } = 6;
 
-    /// <summary>Days Xcode's derived data or a test bundle inside a workspace's copy may go unwritten before a sweep removes it.</summary>
+    /// <summary>Days Xcode's derived data inside a workspace's copy may go unwritten before a sweep removes it.</summary>
     public int OutputDays { get; set; } = 7;
 
     /// <summary>Free gigabytes on a host below which a sweep runs before a build.</summary>
@@ -158,6 +179,10 @@ public sealed class BuildOptions
     /// <summary>The sweep's ages as the domain carries them.</summary>
     public SweepRules ToSweepRules() => new(WorkspaceDays, JobDays, ImageDays, BuildCacheHours, LowDiskGigabytes, OutputDays)
     {
+        SessionIdleMinutes = SessionIdleMinutes,
+        SweepMinutes = SweepMinutes,
+        ResultDays = ResultDays,
+        CachesSweepHours = CachesSweepHours,
         KeptSdk = SdkVersion,
         KeptPackages = AndroidPackages,
         KeptImages = [.. Images.Select(image => BuildImage.TagOf(image, SdkVersion))]

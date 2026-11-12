@@ -30,7 +30,7 @@ public sealed class RunsTests
 
         var logs = new Logs(TimeProvider.System, TestFolder.Create());
 
-        return (new Runs(hosts, new FakeCopies(), builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), new FakeSecrets(), options), builder);
+        return (new Runs(hosts, new FakeCopies(), builder, logs, new Feeds(builder, logs, options, TimeProvider.System), new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), new FakeSecrets(), options), builder);
     }
 
     [Fact]
@@ -161,7 +161,7 @@ public sealed class RunsTests
         var copies = new FakeCopies { Copy = new LocalCopy(copy, "Sample", "main", null, false) };
         var logs = new Logs(TimeProvider.System, TestFolder.Create());
         var options = Options.Create(new BuildOptions { Hosts = [new HostSetting { Name = Mini.Name, Address = Mini.Address }] });
-        runs = new Runs(new Hosts(options, builder), copies, builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), new FakeSecrets(), options);
+        runs = new Runs(new Hosts(options, builder), copies, builder, logs, new Feeds(builder, logs, options, TimeProvider.System), new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), new FakeSecrets(), options);
 
         var answer = await runs.RunAsync(copy, BuildKind.Xcode, ["build", "-project", "apple/App.xcodeproj", "-scheme", "App"], [], [], null, new Steps(), CancellationToken.None);
 
@@ -181,7 +181,7 @@ public sealed class RunsTests
         var copies = new FakeCopies { Copy = new LocalCopy(copy, "Sample", "main", null, false) };
         var logs = new Logs(TimeProvider.System, TestFolder.Create());
         var options = Options.Create(new BuildOptions { Hosts = [new HostSetting { Name = Mini.Name, Address = Mini.Address }] });
-        runs = new Runs(new Hosts(options, builder), copies, builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), new FakeSecrets(), options);
+        runs = new Runs(new Hosts(options, builder), copies, builder, logs, new Feeds(builder, logs, options, TimeProvider.System), new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), new FakeSecrets(), options);
 
         var answer = await runs.RunAsync(copy, BuildKind.Script, ["tools/pack.sh", "Debug"], [], [], null, new Steps(), CancellationToken.None);
 
@@ -359,7 +359,7 @@ public sealed class RunsTests
         var copies = new FakeCopies { Copy = new LocalCopy(copy, "Sample", "main", null, false) };
         var logs = new Logs(TimeProvider.System, TestFolder.Create());
         var options = Options.Create(new BuildOptions { Hosts = [new HostSetting { Name = Mini.Name, Address = Mini.Address }] });
-        runs = new Runs(new Hosts(options, builder), copies, builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), new FakeSecrets(), options);
+        runs = new Runs(new Hosts(options, builder), copies, builder, logs, new Feeds(builder, logs, options, TimeProvider.System), new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), new FakeSecrets(), options);
 
         var answer = await runs.RunAsync(copy, BuildKind.Dotnet, ["build"], [], [], null, new Steps(), CancellationToken.None);
 
@@ -401,7 +401,7 @@ public sealed class RunsTests
         secrets.Values["TOKEN"] = "from-the-keychain";
         var logs = new Logs(TimeProvider.System, TestFolder.Create());
         var options = Options.Create(new BuildOptions { Hosts = [new HostSetting { Name = Mini.Name, Address = Mini.Address }] });
-        var runs = new Runs(new Hosts(options, builder), new FakeCopies(), builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), secrets, options);
+        var runs = new Runs(new Hosts(options, builder), new FakeCopies(), builder, logs, new Feeds(builder, logs, options, TimeProvider.System), new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), secrets, options);
 
         var answer = await runs.RunAsync("/Users/me/Sample", BuildKind.Dotnet, ["test"], [], ["ASPNETCORE_ENVIRONMENT=Testing", "TOKEN=from-the-call"], null, new Steps(), CancellationToken.None);
 
@@ -435,7 +435,7 @@ public sealed class RunsTests
         var secrets = new FakeSecrets { Error = "The secret TOKEN could not be read from the keychain service anonym: not found" };
         var logs = new Logs(TimeProvider.System, TestFolder.Create());
         var options = Options.Create(new BuildOptions { Hosts = [new HostSetting { Name = Mini.Name, Address = Mini.Address }] });
-        var runs = new Runs(new Hosts(options, builder), new FakeCopies(), builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), secrets, options);
+        var runs = new Runs(new Hosts(options, builder), new FakeCopies(), builder, logs, new Feeds(builder, logs, options, TimeProvider.System), new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), secrets, options);
 
         var answer = await runs.RunAsync("/Users/me/Sample", BuildKind.Dotnet, ["test"], [], [], null, new Steps(), CancellationToken.None);
 
@@ -452,7 +452,7 @@ public sealed class RunsTests
         var copies = new FakeCopies { Copy = new LocalCopy(copy, "Sample", "main", null, false) };
         var logs = new Logs(TimeProvider.System, TestFolder.Create());
         var options = Options.Create(new BuildOptions { Hosts = [new HostSetting { Name = Mini.Name, Address = Mini.Address }] });
-        runs = new Runs(new Hosts(options, builder), copies, builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), new FakeSecrets(), options);
+        runs = new Runs(new Hosts(options, builder), copies, builder, logs, new Feeds(builder, logs, options, TimeProvider.System), new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), new FakeSecrets(), options);
 
         var answer = await runs.RunAsync(copy, BuildKind.Gradle, ["assembleDebug"], [], [], null, new Steps(), CancellationToken.None);
 
@@ -468,7 +468,7 @@ public sealed class RunsTests
         var copies = new FakeCopies { Copy = new LocalCopy(copy, "Sample", "main", null, false) };
         var logs = new Logs(TimeProvider.System, TestFolder.Create());
         var options = Options.Create(new BuildOptions { Hosts = [new HostSetting { Name = Mini.Name, Address = Mini.Address }] });
-        runs = new Runs(new Hosts(options, builder), copies, builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), new FakeSecrets(), options);
+        runs = new Runs(new Hosts(options, builder), copies, builder, logs, new Feeds(builder, logs, options, TimeProvider.System), new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), new FakeSecrets(), options);
 
         var answer = await runs.RunAsync(copy, BuildKind.Gradle, ["assembleDebug"], [], [], null, new Steps(), CancellationToken.None);
 

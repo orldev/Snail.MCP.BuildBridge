@@ -93,7 +93,7 @@ something to do, and the type of what stopped it; a build that ran and failed is
    nothing on the host. The copy's folder is named as the repository is, so a tool that reads a name from the root
    folder — git, Snail.Sdk's conformance — sees the same name there as here. A marker beside it, `.s3l-build.json`, is
    what proves the workspace the server's. The feeds the settings name are mirrored
-   under `feeds/`. With `Sync` set to `mutagen`, a [Mutagen](https://mutagen.io) session keeps the workspace mirrored
+   under `feeds/`, each again only once it changed on this machine or an hour passed. With `Sync` set to `mutagen`, a [Mutagen](https://mutagen.io) session keeps the workspace mirrored
    as the copy changes — one-way, with the same ignores — and a run only waits for it to catch up.
 5. The command runs in the workspace, its output streamed to a log under `~/.s3l-mcp-buildbridge/jobs/`, which
    `build_logs` reads. One workspace takes one run at a time; a second waits its turn. A run stopped from this side —
@@ -126,8 +126,8 @@ something to do, and the type of what stopped it; a build that ran and failed is
      such as a core packed into a framework before an `xcode` run. It must be executable, as git keeps it, and lie
      inside the copy.
 6. The log is read for what the tests said, in the words of VSTest or of the testing platform.
-7. The repository's workspaces not built for 14 days, Xcode's derived data and test bundles in its copies nothing
-   wrote into for 7 days — a branch built every day is never stale, and what its builds leave in its copy is no
+7. The repository's workspaces not built for 14 days, Xcode's derived data in its copies nothing wrote into for 7
+   days and test bundles there for 30 — a branch built every day is never stale, and what its builds leave in its copy is no
    delivery's to remove — derived data of workspaces that are gone, and the build cache not used for 6 hours are swept.
 
 ## The host
@@ -197,7 +197,13 @@ A host that is this machine — `localhost` — is worked without ssh, straight 
 | `Sync` | `rsync` | What carries a copy: `rsync`, a mirror before every run, or `mutagen`, a session per workspace that keeps it mirrored; `Mutagen` names the program. |
 | `Excludes` | `bin obj artifacts TestResults BenchmarkDotNet.Artifacts node_modules .DS_Store` | Folders a delivery never sends. |
 | `TransferSeconds`, `RunSeconds`, `ProbeSeconds` | 600, 3600, 20 | How long a delivery, a run, a probe may take. |
-| `WorkspaceDays`, `JobDays`, `ImageDays`, `BuildCacheHours`, `OutputDays` | 14, 30, 7, 6, 7 | The ages a sweep goes by. |
+| `WorkspaceDays`, `JobDays`, `ImageDays`, `BuildCacheHours`, `OutputDays`, `ResultDays` | 14, 30, 7, 6, 7, 30 | The ages a sweep goes by; `ResultDays` is for test bundles, what a test run found. |
+| `SessionsAwake` | 30 | The most Mutagen sessions kept awake at once, each holding one of the 42 connections a Mac's sshd has; a delivery that makes one more pauses the one used longest ago. Zero or less sets no limit. |
+| `ProbeKeepSeconds` | 60 | Seconds a host's answer to a probe is gone by before a run probes it again; `build_hosts` always probes. Zero or less probes before every run. |
+| `SshShareMinutes` | 30 | Minutes the connection to a host stays open after its last command, every command to that host going over it (`ControlMaster`, its socket `~/.ssh/s3l-<hash>`): a step is one more session on it, not one more handshake the host's sshd may turn away. Zero or less opens a connection for each command. |
+| `SessionIdleMinutes` | 30 | Minutes a workspace may go without a delivery or a build before its Mutagen session is paused, holding no connection to the host; the next delivery resumes it. Zero or less never pauses one. |
+| `SweepMinutes` | 10 | Minutes between two sweeps after a run of one repository on one host: a run within them ends without surveying the host. Zero or less sweeps after every run. |
+| `CachesSweepHours` | 24 | Hours between two sweeps of the whole `caches` scope carried out by themselves after a run. Zero or less leaves that scope to `build_clean` and to a host short of room. |
 | `IdleTimeoutMinutes` | 60 | Minutes without an MCP message after which the server stops, unless a job is running: a client lost without closing its input leaves no process behind. Zero or less never stops it. |
 | `LowDiskGigabytes` | 20 | Free gigabytes on a host below which a run sweeps the caches first. |
 
@@ -210,13 +216,20 @@ SNAIL_MCP_BUILDBRIDGE_RUN_SECONDS (or RunSeconds in the settings file) is '0'; i
 
 ## What is swept, and when
 
+A sweep after a run goes by ages alone and measures no sizes, and runs once in `SweepMinutes` for a repository on a
+host. Once in `CachesSweepHours` the sweep after a run is the whole `caches` scope, every repository's, so a host is
+kept tidy without anyone asking; a host met for the first time waits those hours out. `everything` is never carried
+out by itself: it removes every workspace, and the next build of each starts from nothing. `build_clean` surveys with
+sizes, shows its plan and carries out only what it showed.
+
 | What | Proof it is the server's | Goes when |
 | --- | --- | --- |
 | a workspace | its marker | not built for `WorkspaceDays`, after a run of its repository; its scope asked for; `caches`, `everything` |
 | derived data | named for a workspace | its workspace is gone; `everything` |
 | images a run made | the label `snail.owner` | older than `ImageDays` in `caches`; all in `everything` |
 | the images of the container kinds | the label `snail.image` | `everything` only |
-| Xcode's derived data and test bundles inside a copy | inside a workspace with its marker | nothing written into them for `OutputDays`, after a run of their repository; `caches` |
+| Xcode's derived data inside a copy | inside a workspace with its marker | nothing written into it for `OutputDays`, after a run of its repository; `caches` |
+| a test bundle (`.xcresult`) inside a copy | inside a workspace with its marker | nothing written into it for `ResultDays`, after a run of its repository; `caches` |
 | the build cache | shared | entries not used for `BuildCacheHours`, after every run and in `caches`; all in `everything` |
 | the packages, Gradle's files, npm's cache and Playwright's browsers under the root | under the root | `everything` only |
 | an SDK under the root | under the root | no settings and no workspace's `global.json` name it; `caches` |
@@ -224,10 +237,23 @@ SNAIL_MCP_BUILDBRIDGE_RUN_SECONDS (or RunSeconds in the settings file) is '0'; i
 | toolchain images the settings do not name | the label `snail.image` and the tag | `caches` |
 | logs on this machine | under the server's data folder | older than `JobDays` |
 | a Mutagen session whose copy is gone from this machine | the label `s3l.shape` and the name | after every run; `caches`, `everything` |
+| the connection of a Mutagen session whose workspace is left alone | the label `s3l.shape` and the name | paused, not removed, once the workspace went `SessionIdleMinutes` without a delivery or a build, after every run; its next delivery resumes it |
 
 The SDK under the root stays: a sweep never costs a download. To start over, erase `~/.s3l-build` and provision again.
 A Mutagen session goes with its workspace; `mutagen sync list` on this machine shows the ones there are, named
 `s3l-<repository>-<branch>-<host>`.
+
+## When the host turns connections away
+
+A Mac's sshd is started by launchd for each connection and takes forty-two handshakes at a time; `MaxStartups` and
+`PerSourcePenalties` in `sshd_config` belong to a listening daemon and do nothing there. Every Mutagen session holds a
+connection and reconnects when the host's sshd restarts — switching Remote Login off and on does it — so fifty sessions
+reconnecting at once get `Connection closed by … port 22` before the greeting, and so does anything else that connects
+in that minute. Sessions that are awake can also hold all forty-two connections, and then the host closes every new
+one until some let go. Five things keep a run out of it: no more than `SessionsAwake` sessions are awake at once; when the host turns a probe away, every session of this
+server is paused and the probe is made again; sessions of workspaces left alone are paused after a run, so the
+connections held are those of the copies being worked on; every short command of this server goes over one shared connection and builds over three more of theirs; and a
+command turned away before the greeting — it never started — is run again after 2, 5 and 10 seconds.
 
 ## Run it
 

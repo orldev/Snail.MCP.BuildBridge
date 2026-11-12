@@ -29,7 +29,7 @@ public sealed class RsyncCourier(IPrograms programs, ICopies copies, RemoteShell
         string excludes = string.Join('\n', Excludes(copy, [.. ignoredHere, .. ignoredThere]).Distinct(StringComparer.Ordinal)) + '\n';
         var started = clock.GetTimestamp();
 
-        var arguments = Rsync.Arguments(options.Value, host, isDryRun, true, $"{copy.Path}/", $"{RemoteShell.Rsync(host, key.CopyFolder)}/");
+        var arguments = Rsync.Arguments(shell.SshLine, host, isDryRun, true, $"{copy.Path}/", $"{RemoteShell.Rsync(host, key.CopyFolder)}/");
         var run = await programs.RunAsync(options.Value.Rsync, arguments, null, TimeSpan.FromSeconds(options.Value.TransferSeconds), cancellationToken, excludes);
         if (run.IsMissing)
             return Answer.Failed(Messages.ProgramMissing(options.Value.Rsync), type: Refusals.NotInstalled);
@@ -48,6 +48,12 @@ public sealed class RsyncCourier(IPrograms programs, ICopies copies, RemoteShell
 
     /// <inheritdoc/>
     public Task EndAsync(string name, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<string>> RestAsync(Host host, IReadOnlyList<WorkspaceKey> keys, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<string>>([]);
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<string>> RestAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<string>>([]);
 
     /// <summary>What git ignores in the workspace on the host: what the host built for itself under an ignored path, which exists there and not here, and which --delete would otherwise take.</summary>
     /// <remarks>Proven by a chaos test on 2026-11-03: a folder the host made under an ignored path absent on this machine was gone after the next delivery.</remarks>

@@ -1,5 +1,4 @@
 using System.Globalization;
-using Snail.MCP.BuildBridge.Configuration;
 using Snail.MCP.BuildBridge.Domain;
 
 namespace Snail.MCP.BuildBridge.Adapters;
@@ -9,8 +8,8 @@ internal static class Rsync
 {
     private const string TransferredPrefix = "Total transferred file size:";
 
-    /// <summary>The arguments of a mirror from <paramref name="source"/> to <paramref name="destination"/>, over ssh unless the host is this machine, with excludes on the standard input when asked.</summary>
-    public static IReadOnlyList<string> Arguments(BuildOptions options, Host host, bool isDryRun, bool hasExcludes, string source, string destination)
+    /// <summary>The arguments of a mirror from <paramref name="source"/> to <paramref name="destination"/>, over <paramref name="ssh"/> — the program with its options, in a line — unless the host is this machine, with excludes on the standard input when asked.</summary>
+    public static IReadOnlyList<string> Arguments(string ssh, Host host, bool isDryRun, bool hasExcludes, string source, string destination)
     {
         var arguments = new List<string> { "-a", "--delete", "--itemize-changes", "--stats" };
         if (isDryRun)
@@ -18,7 +17,7 @@ internal static class Rsync
         if (hasExcludes)
             arguments.Add("--exclude-from=-");
         if (!host.IsLocal)
-            arguments.AddRange(["-e", $"{options.Ssh} -o BatchMode=yes -o ConnectTimeout=10"]);
+            arguments.AddRange(["-e", ssh]);
 
         arguments.Add(source);
         arguments.Add(destination);

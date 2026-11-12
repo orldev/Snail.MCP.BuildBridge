@@ -22,7 +22,7 @@ public sealed class Sweeps(IBuilder builder, Logs logs, IOptions<BuildOptions> o
     /// <summary>A sweep of <paramref name="scope"/> on <paramref name="host"/>, decided and kept under its id.</summary>
     public async Task<Answer<SweepPlan>> PlanAsync(Host host, SweepScope scope, WorkspaceKey? workspace, string? repository, CancellationToken cancellationToken)
     {
-        var surveyed = await builder.SurveyAsync(host, cancellationToken);
+        var surveyed = await builder.SurveyAsync(host, true, cancellationToken);
         if (!surveyed.TryGet(out var survey))
             return surveyed.As<SweepPlan>();
 
@@ -49,20 +49,44 @@ public sealed class Sweeps(IBuilder builder, Logs logs, IOptions<BuildOptions> o
         return Answer.Ok(await CarryOutAsync(plan.Host, plan.Items, cancellationToken));
     }
 
-    /// <summary>The sweep after a run of <paramref name="repository"/> on <paramref name="host"/>: its stale workspaces, orphan derived data, old logs; what went is answered.</summary>
+    /// <summary>The sweep after a run of <paramref name="repository"/> on <paramref name="host"/>: its stale workspaces, orphan derived data, old logs, and the sessions of workspaces left alone put to rest; what went is answered.</summary>
+    /// <remarks>
+    /// The sweep goes by ages counted in hours and days, and surveying the host for it after every run was most of a
+    /// short run: 9.4 s of 14 for a command of 0.5 s (2026-11-12). So it runs once in <see cref="SweepRules.SweepMinutes"/>
+    /// for a repository on a host — a file under the logs folder, written when it does, says when that was to every
+    /// process of this server — and asks for a survey without sizes. Once in <see cref="SweepRules.CachesSweepHours"/>
+    /// the sweep is the whole caches scope instead, every repository's: what <c>build_clean</c> would show for caches,
+    /// which otherwise ran only on a host short of room — old images, the versions an update left behind and the stale
+    /// workspaces of repositories nobody builds any more stayed until someone asked.
+    /// </remarks>
     public async Task<IReadOnlyList<SweepResult>> AfterRunAsync(Host host, string repository, CancellationToken cancellationToken)
     {
-        var surveyed = await builder.SurveyAsync(host, cancellationToken);
+        var now = clock.GetUtcNow();
+        bool isWhole = IsWholeDue(host, now);
+        if (!isWhole && !IsDue(host, repository, now))
+            return [];
+
+        var surveyed = await builder.SurveyAsync(host, false, cancellationToken);
         if (!surveyed.TryGet(out var survey))
             return [];
 
-        var now = clock.GetUtcNow();
-        var items = Sweep.AfterRun(survey, Rules, now, repository).ToList();
+        var items = (isWhole ? Sweep.Decide(survey, Rules, now, SweepScope.Caches) : Sweep.AfterRun(survey, Rules, now, repository)).ToList();
         if (OldLogs(now).Count is > 0 and var old)
             items.Add(new SweepItem(SweepKind.Logs, $"{Rules.JobDays}d", null, $"{old} logs older than {Rules.JobDays} days"));
         items.AddRange(await StrandedAsync(cancellationToken));
 
-        return await CarryOutAsync(host, items, cancellationToken);
+        var results = await CarryOutAsync(host, items, cancellationToken);
+        var rested = await builder.RestAsync(host, Sweep.Idle(survey, Rules, now, repository), cancellationToken);
+
+        return [.. results, .. rested.Select(Rested)];
+    }
+
+    /// <summary>A session put to rest, as a sweep's result: nothing was removed, and the next delivery resumes it.</summary>
+    private SweepResult Rested(string session)
+    {
+        var item = new SweepItem(SweepKind.Session, session, null, $"its workspace was not used for {Rules.SessionIdleMinutes} minutes");
+
+        return new SweepResult(item, true, "paused until its next delivery");
     }
 
     /// <summary>The sessions whose copy on this machine is gone, as items of a sweep: each holds a connection to its host for nothing.</summary>
@@ -110,6 +134,29 @@ public sealed class Sweeps(IBuilder builder, Logs logs, IOptions<BuildOptions> o
         }
 
         return results;
+    }
+
+    /// <summary>Whether the whole caches sweep of <paramref name="host"/> is due at <paramref name="now"/>; a host met for the first time waits its hours out.</summary>
+    private bool IsWholeDue(Host host, DateTimeOffset now) =>
+        Rules.CachesSweepHours > 0 && IsDue($"caches-{WorkspaceKey.Safe(host.Name)}", TimeSpan.FromHours(Rules.CachesSweepHours), now, isDueAtFirst: false);
+
+    /// <summary>Whether the sweep after a run of <paramref name="repository"/> on <paramref name="host"/> is due at <paramref name="now"/>.</summary>
+    private bool IsDue(Host host, string repository, DateTimeOffset now) =>
+        Rules.SweepMinutes <= 0 || IsDue($"{WorkspaceKey.Safe(host.Name)}-{WorkspaceKey.Safe(repository)}", TimeSpan.FromMinutes(Rules.SweepMinutes), now, isDueAtFirst: true);
+
+    /// <summary>Whether the sweep called <paramref name="name"/> ran longer ago than <paramref name="every"/>; when it is due — or is met for the first time — <paramref name="now"/> is written down as its last.</summary>
+    private bool IsDue(string name, TimeSpan every, DateTimeOffset now, bool isDueAtFirst)
+    {
+        string file = Path.Combine(logs.Folder, $".swept-{name}");
+        bool isKnown = File.Exists(file);
+        if (isKnown && now - File.GetLastWriteTimeUtc(file) < every)
+            return false;
+
+        Directory.CreateDirectory(logs.Folder);
+        File.WriteAllBytes(file, []);
+        File.SetLastWriteTimeUtc(file, now.UtcDateTime);
+
+        return isKnown || isDueAtFirst;
     }
 
     private IReadOnlyList<string> OldLogs(DateTimeOffset now)

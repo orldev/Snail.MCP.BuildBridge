@@ -119,13 +119,27 @@ public sealed class SweepTests
     public void Decide_Caches_OutputsOfAStaleWorkspace_GoWithIt()
     {
         var inStale = new OutputState(Stale.Key, "artifacts/app-dd", Now.AddDays(-30), 4_000);
-        var inFresh = new OutputState(Fresh.Key, "artifacts/tests/a.xcresult", Now.AddDays(-9), 1_000);
+        var inFresh = new OutputState(Fresh.Key, "artifacts/tests/a.xcresult", Now.AddDays(-31), 1_000);
         var survey = Of(Fresh, Stale) with { Outputs = [inStale, inFresh] };
 
         var items = Sweep.Decide(survey, Rules, Now, SweepScope.Caches);
 
         Assert.Equal(["Anonym/main/artifacts/tests/a.xcresult"], items.Where(item => item.Kind == SweepKind.Output).Select(item => item.Name));
         Assert.Contains(items, item => item.Kind == SweepKind.Workspace && item.Name == "Anonym/old");
+    }
+
+    /// <summary>What a test run found is read for longer than derived data is worth keeping: a bundle nine days old stays where derived data of that age goes, and goes past its own thirty.</summary>
+    [Fact]
+    public void Decide_Caches_ATestBundle_IsKeptItsOwnDaysLongerThanDerivedData()
+    {
+        var derived = new OutputState(Fresh.Key, "artifacts/app-dd", Now.AddDays(-9), 4_000);
+        var recent = new OutputState(Fresh.Key, "artifacts/tests/recent.xcresult", Now.AddDays(-9), 1_000);
+        var old = new OutputState(Fresh.Key, "artifacts/tests/old.xcresult", Now.AddDays(-31), 1_000);
+        var survey = Of(Fresh) with { Outputs = [derived, recent, old] };
+
+        var items = Sweep.Decide(survey, Rules, Now, SweepScope.Caches);
+
+        Assert.Equal(["Anonym/main/artifacts/app-dd", "Anonym/main/artifacts/tests/old.xcresult"], items.Where(item => item.Kind == SweepKind.Output).Select(item => item.Name));
     }
 
     [Theory]

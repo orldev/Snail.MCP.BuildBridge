@@ -257,7 +257,7 @@ public sealed class SshBuilderTests
         File.SetLastWriteTimeUtc(Path.Combine(host.Root, old.Workspace.Folder, WorkspaceMarker.FileName), DateTime.UtcNow.AddDays(-20));
         Directory.CreateDirectory(Path.Combine(host.Root, "derived", "Gone-main"));
 
-        var answer = await builder.SurveyAsync(host, CancellationToken.None);
+        var answer = await builder.SurveyAsync(host, true, CancellationToken.None);
 
         var survey = Assert.IsType<Survey>(answer.Value);
         Assert.Equal(["Fresh/main", "Old/main"], survey.Workspaces.Select(state => $"{state.Key.Repository}/{state.Key.Branch}").Order(StringComparer.Ordinal));
@@ -265,6 +265,22 @@ public sealed class SshBuilderTests
         Assert.True(survey.Workspaces.Single(state => state.Key.Repository == "Old").LastUsed < DateTimeOffset.UtcNow.AddDays(-19));
         Assert.Equal(["Gone-main"], survey.Derived);
         Assert.True(survey.FreeGigabytes > 0);
+    }
+
+    /// <summary>Measuring sizes was five seconds of a survey on a host with sixty workspaces: asked for none, the survey still finds every workspace and its age, each size 0.</summary>
+    [Fact]
+    public async Task SurveyAsync_WithoutSizes_FindsTheWorkspacesAndMeasuresNothing()
+    {
+        var host = LocalHost();
+        var builder = Builder();
+        await builder.DeliverAsync(host, await CopyAsync(Repositories.Create("Fresh")), false, CancellationToken.None);
+
+        var survey = Assert.IsType<Survey>((await builder.SurveyAsync(host, false, CancellationToken.None)).Value);
+
+        var state = Assert.Single(survey.Workspaces);
+        Assert.Equal(0, state.Bytes);
+        Assert.True(state.LastUsed > DateTimeOffset.UtcNow.AddMinutes(-5));
+        Assert.Equal(0, survey.PackagesGigabytes);
     }
 
     /// <summary>
@@ -292,7 +308,7 @@ public sealed class SshBuilderTests
         Directory.SetLastWriteTimeUtc(old, DateTime.UtcNow.AddDays(-10));
         Directory.SetLastWriteTimeUtc(Path.GetDirectoryName(old)!, DateTime.UtcNow.AddDays(-10));
 
-        var survey = Assert.IsType<Survey>((await builder.SurveyAsync(host, CancellationToken.None)).Value);
+        var survey = Assert.IsType<Survey>((await builder.SurveyAsync(host, true, CancellationToken.None)).Value);
 
         Assert.Equal(["artifacts/app-dd", "artifacts/kit-dd", "artifacts/tests/run 1.xcresult"], survey.Outputs.Select(output => output.Path).Order(StringComparer.Ordinal));
         Assert.All(survey.Outputs, output => Assert.Equal(new WorkspaceKey("Anonym", "main"), output.Key));

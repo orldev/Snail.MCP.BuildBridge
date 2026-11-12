@@ -42,6 +42,8 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
             """;
 
         var run = await RunScriptAsync(host, script, cancellationToken);
+        if (PatientPrograms.IsTurnedAway(run) && (await courier.RestAsync(cancellationToken)).Count > 0)
+            run = await RunScriptAsync(host, script, cancellationToken);
         if (run.IsMissing)
             return HostState.Unreachable(host, Messages.ProgramMissing(options.Value.Ssh));
         if (run.IsTimedOut)
@@ -74,7 +76,7 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
     /// </remarks>
     public async Task<Answer<Provisioned>> ProvisionAsync(Host host, BuilderManifest manifest, string log, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        var words = shell.Command(host, RemoteShell.Prelude(host) + ProvisionScripts.Of(host, manifest));
+        var words = shell.LongCommand(host, RemoteShell.Prelude(host) + ProvisionScripts.Of(host, manifest), host.Name);
         var run = await programs.RunToLogAsync(words[0], words[1..], null, log, timeout, cancellationToken);
 
         if (run.IsMissing)
@@ -111,7 +113,7 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
             return Answer.Failed(Messages.DeliveryFailed(host.Name, Rsync.Reason(made)), type: Refusals.NotDelivered);
 
         var started = clock.GetTimestamp();
-        var arguments = Rsync.Arguments(options.Value, host, false, false, $"{source.TrimEnd('/')}/", $"{RemoteShell.Rsync(host, relative)}/");
+        var arguments = Rsync.Arguments(shell.SshLine, host, false, false, $"{source.TrimEnd('/')}/", $"{RemoteShell.Rsync(host, relative)}/");
         var run = await programs.RunAsync(options.Value.Rsync, arguments, null, TimeSpan.FromSeconds(options.Value.TransferSeconds), cancellationToken);
         if (run.IsMissing)
             return Answer.Failed(Messages.ProgramMissing(options.Value.Rsync), type: Refusals.NotInstalled);
@@ -141,7 +143,7 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
             exit "$status"
             """;
 
-        var words = shell.Command(host, script);
+        var words = shell.LongCommand(host, script, key.Folder);
         var started = clock.GetTimestamp();
         ProgramRun run;
 
@@ -198,7 +200,7 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
             string into = Path.Combine(folder, Path.GetDirectoryName(path) ?? string.Empty);
             Directory.CreateDirectory(into);
 
-            var arguments = Rsync.Arguments(options.Value, host, false, false, RemoteShell.Rsync(host, $"{key.CopyFolder}/{path}"), $"{into}/");
+            var arguments = Rsync.Arguments(shell.SshLine, host, false, false, RemoteShell.Rsync(host, $"{key.CopyFolder}/{path}"), $"{into}/");
             var run = await programs.RunAsync(options.Value.Rsync, arguments, null, TimeSpan.FromSeconds(options.Value.TransferSeconds), cancellationToken);
             if (run.IsMissing)
                 return Answer.Failed(Messages.ProgramMissing(options.Value.Rsync), type: Refusals.NotInstalled);
@@ -311,9 +313,12 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
     public Task<IReadOnlyList<string>> StrandedAsync(CancellationToken cancellationToken) => courier.StrandedAsync(cancellationToken);
 
     /// <inheritdoc/>
-    public async Task<Answer<Survey>> SurveyAsync(Host host, CancellationToken cancellationToken)
+    public Task<IReadOnlyList<string>> RestAsync(Host host, IReadOnlyList<WorkspaceKey> keys, CancellationToken cancellationToken) => courier.RestAsync(host, keys, cancellationToken);
+
+    /// <inheritdoc/>
+    public async Task<Answer<Survey>> SurveyAsync(Host host, bool isSized, CancellationToken cancellationToken)
     {
-        var run = await RunScriptAsync(host, Surveys.Script(host), cancellationToken, TimeSpan.FromSeconds(options.Value.TransferSeconds));
+        var run = await RunScriptAsync(host, Surveys.Script(host, isSized), cancellationToken, TimeSpan.FromSeconds(options.Value.TransferSeconds));
         if (!run.IsSuccess)
             return Answer.Failed(Messages.SurveyFailed(host.Name, Rsync.Reason(run)), type: Refusals.NotSurveyed);
 

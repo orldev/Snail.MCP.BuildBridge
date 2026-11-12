@@ -76,7 +76,7 @@ public enum SweepKind
     /// <summary>The NuGet packages, Gradle's own files, npm's cache and Playwright's browsers under the root.</summary>
     Packages,
 
-    /// <summary>A session of this machine to a host, by name, whose copy here is gone.</summary>
+    /// <summary>A session of this machine to a host, by name: ended when its copy here is gone, paused when its workspace has gone unused for a while.</summary>
     Session,
 
     /// <summary>A .NET SDK under the root, by version, that no settings and no workspace name any more.</summary>
@@ -151,6 +151,20 @@ public static class Sweep
         return items;
     }
 
+    /// <summary>The workspaces left alone long enough for the sessions that mirror into them to rest, without those the sweep after a run of <paramref name="repository"/> removes.</summary>
+    /// <remarks>
+    /// A session holds a connection to its host for as long as it lives, and every session reconnects at once when the
+    /// host's sshd restarts: on 2026-11-12 fifty-six of them did, more than the forty-two handshakes launchd lets a Mac's
+    /// sshd take at a time, and the host turned connections away for minutes. A paused session holds none.
+    /// </remarks>
+    public static IReadOnlyList<WorkspaceKey> Idle(Survey survey, SweepRules rules, DateTimeOffset now, string repository)
+    {
+        var idle = survey.Workspaces.Where(state => rules.IsIdle(state.LastUsed, now));
+        var kept = idle.Where(state => !(IsOf(state.Key, repository) && rules.IsStale(state.LastUsed, now)));
+
+        return [.. kept.Select(state => state.Key)];
+    }
+
     private static IReadOnlyList<SweepItem> Stale(Survey survey, SweepRules rules, DateTimeOffset now)
     {
         var stale = survey.Workspaces.Where(state => rules.IsStale(state.LastUsed, now)).ToList();
@@ -171,8 +185,8 @@ public static class Sweep
 
     private static IEnumerable<SweepItem> Quiet(IEnumerable<OutputState> outputs, SweepRules rules, DateTimeOffset now) =>
         outputs
-            .Where(output => rules.IsQuiet(output.LastWritten, now))
-            .Select(output => new SweepItem(SweepKind.Output, $"{output.Key.Repository}/{output.Key.Branch}/{output.Path}", output.Bytes, $"nothing was written into it for {rules.OutputDays} days; the next build makes it again"));
+            .Where(output => rules.IsQuiet(output.Path, output.LastWritten, now))
+            .Select(output => new SweepItem(SweepKind.Output, $"{output.Key.Repository}/{output.Key.Branch}/{output.Path}", Measured(output.Bytes), $"nothing was written into it for {rules.DaysOf(output.Path)} days"));
 
     private static SweepItem CacheOf(Survey survey, SweepRules rules) =>
         new(SweepKind.BuildCache, $"{rules.BuildCacheHours}h", null, $"build cache not used for {rules.BuildCacheHours} hours, of {survey.BuildCacheGigabytes:0.0} GB");
@@ -222,5 +236,8 @@ public static class Sweep
         return survey.Derived.Where(name => !living.Contains(name)).Select(name => new SweepItem(SweepKind.Derived, name, null, "its workspace is gone"));
     }
 
-    private static SweepItem Of(WorkspaceState state, string reason) => new(SweepKind.Workspace, $"{state.Key.Repository}/{state.Key.Branch}", state.Bytes, reason);
+    private static SweepItem Of(WorkspaceState state, string reason) => new(SweepKind.Workspace, $"{state.Key.Repository}/{state.Key.Branch}", Measured(state.Bytes), reason);
+
+    /// <summary>A size as an item carries it: unknown when the survey measured none.</summary>
+    private static long? Measured(long bytes) => bytes > 0 ? bytes : null;
 }

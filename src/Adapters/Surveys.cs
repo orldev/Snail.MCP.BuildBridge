@@ -6,21 +6,29 @@ namespace Snail.MCP.BuildBridge.Adapters;
 /// <summary>A host's root surveyed: the script that lists what is there, and the survey read from its lines.</summary>
 public static class Surveys
 {
+    private const string SizedLine = """size() { du -sk "$@" 2>/dev/null | awk '{ total += $1 } END { print total + 0 }'; }""";
+
+    private const string UnsizedLine = "size() { echo 0; }";
+
     /// <summary>The script that surveys a root: a line per workspace with its marker and per output inside its copy, per derived folder, per SDK under the root and per version a workspace wishes for, per build tools and NDK, per toolchain image, per labelled image, then the build cache, the packages and the room.</summary>
     /// <remarks>
     /// An output is Xcode's derived data, known by what Xcode writes only into its own — a module, compilation, index or
     /// stat cache, or the packages and logs a resolve leaves — whatever <c>-derivedDataPath</c> named it, or a test bundle.
     /// Every <c>.noindex</c> folder is passed over whole: they hold tens of thousands of entries and no output of another kind.
+    /// Sizes are what a survey costs: with 63 workspaces and 17 GB of packages on the host the sized script took 8.4 s
+    /// of a run whose command took 0.5 s, 5 s of it in <c>du</c> (2026-11-12). A sweep after a run decides by ages
+    /// alone, so it asks for the survey without sizes, every one of them 0.
     /// </remarks>
-    public static string Script(Host host) =>
+    public static string Script(Host host, bool isSized = true) =>
         $$$"""
         ROOT={{{RemoteShell.Root(host)}}}
+        {{{(isSized ? SizedLine : UnsizedLine)}}}
         for marker in "$ROOT"/workspaces/*/*/{{{WorkspaceMarker.FileName}}}; do
           [ -f "$marker" ] || continue
           dir=$(dirname "$marker"); repo=$(basename "$(dirname "$dir")"); branch=$(basename "$dir")
           delivered=$(stat -f %m "$marker"); built=0
           [ -f "$dir/{{{WorkspaceMarker.BuiltFileName}}}" ] && built=$(stat -f %m "$dir/{{{WorkspaceMarker.BuiltFileName}}}")
-          echo "s3l-ws $repo $branch $delivered $built $(du -sk "$dir" | cut -f1)"
+          echo "s3l-ws $repo $branch $delivered $built $(size "$dir")"
           copy="$dir/$repo"
           [ -d "$copy" ] || continue
           find "$copy" -maxdepth 6 \( -name .git -o -name node_modules \) -prune -o -type d \( -name '*.noindex' -o -name '*.xcresult' -o -name SourcePackages \) -print -prune 2>/dev/null |
@@ -32,7 +40,7 @@ public static class Surveys
             esac
           done | sort -u | while IFS= read -r output; do
             written=$(find "$output" -maxdepth 2 -exec stat -f %m {} + 2>/dev/null | sort -n | tail -n 1)
-            echo "s3l-output $repo $branch ${written:-0} $(du -sk "$output" | cut -f1) ${output#"$copy"/}"
+            echo "s3l-output $repo $branch ${written:-0} $(size "$output") ${output#"$copy"/}"
           done
         done
         for folder in "$ROOT"/derived/*/; do [ -d "$folder" ] && echo "s3l-derived $(basename "$folder")"; done
@@ -43,7 +51,7 @@ public static class Surveys
         docker image ls --filter label={{{ProvisionScripts.ImageLabel}}} --format 's3l-toolimage {{.Repository}}:{{.Tag}}' 2>/dev/null
         docker image ls --filter label={{{DockerCommand.Label}}} --format 's3l-image {{.ID}} {{.CreatedAt}} {{.Size}}' 2>/dev/null
         docker system df --format '{{.Type}}	{{.Size}}' 2>/dev/null | awk -F '	' '$1 == "Build Cache" { print "s3l-buildcache " $2 }'
-        echo "s3l-packages $(du -sk "$ROOT/nuget" "$ROOT/gradle" "$ROOT/npm" "$ROOT/playwright" 2>/dev/null | awk '{ total += $1 } END { print total + 0 }')"
+        echo "s3l-packages $(size "$ROOT/nuget" "$ROOT/gradle" "$ROOT/npm" "$ROOT/playwright")"
         echo "s3l-free $(df -g "$HOME" | tail -n 1 | awk '{print $4}')"
         """;
 

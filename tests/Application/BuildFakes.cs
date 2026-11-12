@@ -109,13 +109,36 @@ internal sealed class FakeBuilder : IBuilder
 
     public Task<IReadOnlyList<string>> StrandedAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<string>>(Stranded);
 
+    /// <summary>The workspaces whose sessions were asked to rest.</summary>
+    public List<WorkspaceKey> Idle { get; } = [];
+
+    /// <summary>The sessions a rest pauses, by name; none unless the test says.</summary>
+    public List<string> Paused { get; } = [];
+
+    public Task<IReadOnlyList<string>> RestAsync(Host host, IReadOnlyList<WorkspaceKey> keys, CancellationToken cancellationToken)
+    {
+        Idle.AddRange(keys);
+
+        return Task.FromResult<IReadOnlyList<string>>(Paused);
+    }
+
     /// <summary>What a survey of any host finds.</summary>
     public Survey? Found { get; set; }
 
     public List<SweepItem> CarriedOut { get; } = [];
 
-    public Task<Answer<Survey>> SurveyAsync(Host host, CancellationToken cancellationToken) =>
-        Task.FromResult(Answer.Ok(Found ?? new Survey(host, [], [], [], 0, 0, 400)));
+    /// <summary>How many surveys were asked for, and whether the last asked for sizes.</summary>
+    public int Surveys { get; private set; }
+
+    public bool? IsLastSurveySized { get; private set; }
+
+    public Task<Answer<Survey>> SurveyAsync(Host host, bool isSized, CancellationToken cancellationToken)
+    {
+        Surveys++;
+        IsLastSurveySized = isSized;
+
+        return Task.FromResult(Answer.Ok(Found ?? new Survey(host, [], [], [], 0, 0, 400)));
+    }
 
     public Task<Answer<bool>> CarryOutAsync(Host host, SweepItem item, CancellationToken cancellationToken)
     {

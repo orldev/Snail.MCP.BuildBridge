@@ -20,6 +20,12 @@ public interface ICourier
     /// <summary>What the courier still keeps for copies that are gone from this machine — sessions of a worktree removed, a scratch folder erased — by name.</summary>
     Task<IReadOnlyList<string>> StrandedAsync(CancellationToken cancellationToken);
 
+    /// <summary>Lets what the courier keeps for the workspaces of <paramref name="keys"/> on a host rest — a session paused, holding no connection until the next delivery — and answers the names of those it put to rest.</summary>
+    Task<IReadOnlyList<string>> RestAsync(Host host, IReadOnlyList<WorkspaceKey> keys, CancellationToken cancellationToken);
+
+    /// <summary>Lets everything the courier keeps connected rest, whatever the workspace, and answers the names: what is done when a host has no connection left to give.</summary>
+    Task<IReadOnlyList<string>> RestAsync(CancellationToken cancellationToken);
+
     /// <summary>Lets go of one thing <see cref="StrandedAsync"/> named; a name that is not the courier's own is left alone.</summary>
     Task EndAsync(string name, CancellationToken cancellationToken);
 }

@@ -14,9 +14,18 @@ namespace Snail.MCP.BuildBridge.Domain;
 /// <param name="ImageDays">Days an image a build made is kept.</param>
 /// <param name="BuildCacheHours">Hours of Docker's build cache that are kept when the cache is pruned.</param>
 /// <param name="LowDiskGigabytes">Free gigabytes below which a sweep runs before a build does.</param>
-/// <param name="OutputDays">Days Xcode's derived data or a test bundle inside a workspace's copy may go unwritten before it is removed.</param>
+/// <param name="OutputDays">Days Xcode's derived data inside a workspace's copy may go unwritten before it is removed.</param>
 public sealed record SweepRules(int WorkspaceDays = 14, int JobDays = 30, int ImageDays = 7, int BuildCacheHours = 6, double LowDiskGigabytes = 20, int OutputDays = 7)
 {
+    /// <summary>Minutes a workspace may go unused before the session that mirrors into it is paused; zero or less never pauses one.</summary>
+    public int SessionIdleMinutes { get; init; } = 30;
+
+    /// <summary>Minutes between two sweeps after a run of one repository on one host; zero or less sweeps after every run.</summary>
+    public int SweepMinutes { get; init; } = 10;
+
+    /// <summary>Hours between two sweeps of the whole caches scope carried out by themselves after a run; zero or less leaves that scope to be asked for.</summary>
+    public int CachesSweepHours { get; init; } = 24;
+
     /// <summary>The SDK version the settings name, which a sweep of old versions keeps.</summary>
     public string KeptSdk { get; init; } = string.Empty;
 
@@ -29,8 +38,19 @@ public sealed record SweepRules(int WorkspaceDays = 14, int JobDays = 30, int Im
     /// <summary>Whether a workspace built or delivered last at <paramref name="lastUsed"/> is done with at <paramref name="now"/>.</summary>
     public bool IsStale(DateTimeOffset lastUsed, DateTimeOffset now) => now - lastUsed > TimeSpan.FromDays(WorkspaceDays);
 
-    /// <summary>Whether an output last written at <paramref name="written"/> is done with at <paramref name="now"/>.</summary>
-    public bool IsQuiet(DateTimeOffset written, DateTimeOffset now) => now - written > TimeSpan.FromDays(OutputDays);
+    /// <summary>Whether a workspace built or delivered last at <paramref name="lastUsed"/> has been left alone long enough at <paramref name="now"/> for its session to rest.</summary>
+    public bool IsIdle(DateTimeOffset lastUsed, DateTimeOffset now) => SessionIdleMinutes > 0 && now - lastUsed > TimeSpan.FromMinutes(SessionIdleMinutes);
+
+    /// <summary>Days a test bundle inside a workspace's copy is kept after its last write: what a test run found is read for longer than derived data is worth keeping.</summary>
+    public int ResultDays { get; init; } = 30;
+
+    /// <summary>The days the output at <paramref name="path"/> may go unwritten: a test bundle its own, anything else Xcode's derived data.</summary>
+    public int DaysOf(string path) => path.EndsWith(ResultSuffix, StringComparison.OrdinalIgnoreCase) ? ResultDays : OutputDays;
+
+    /// <summary>Whether the output at <paramref name="path"/>, last written at <paramref name="written"/>, is done with at <paramref name="now"/>.</summary>
+    public bool IsQuiet(string path, DateTimeOffset written, DateTimeOffset now) => now - written > TimeSpan.FromDays(DaysOf(path));
+
+    private const string ResultSuffix = ".xcresult";
 
     /// <summary>Whether <paramref name="freeGigabytes"/> of room is too little to build without a sweep first.</summary>
     public bool IsLow(double freeGigabytes) => freeGigabytes < LowDiskGigabytes;

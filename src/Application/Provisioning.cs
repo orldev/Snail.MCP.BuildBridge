@@ -19,6 +19,8 @@ public sealed class Provisioning(Hosts hosts, IBuilder builder, Logs logs, IOpti
         string log = logs.New("provision");
         var timeout = TimeSpan.FromSeconds(options.Value.RunSeconds);
 
+        hosts.Forget(state.Host);
+
         return await builder.ProvisionAsync(state.Host, options.Value.ToManifest(), log, timeout, cancellationToken);
     }
 }

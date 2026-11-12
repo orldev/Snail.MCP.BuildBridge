@@ -27,6 +27,52 @@ public sealed class RemoteShellTests
         Assert.Equal("exec /bin/sh -c 'for w in $WORDS; do echo \"$w\"; done'", words[^1]);
     }
 
+    /// <summary>A connection made anew for every step is one more handshake a host's sshd may turn away: every command to a host goes over one, kept for the minutes the settings say.</summary>
+    [Fact]
+    public void Command_AnotherHost_SharesOneConnectionForTheMinutesTheSettingsSay()
+    {
+        var words = Shell.Command(new Host("mini", "dev@mini"), "true");
+
+        Assert.Contains("ControlMaster=auto", words);
+        Assert.Contains($"ControlPath={RemoteShell.SharedSocket}", words);
+        Assert.Contains("ControlPersist=1800", words);
+        Assert.Contains("BatchMode=yes", words);
+    }
+
+    /// <summary>A build holds its session for as long as it runs, and ten of them would hold every session the shared connection has: builds share connections of their own, a workspace always the same one.</summary>
+    [Fact]
+    public void LongCommand_ABuild_GoesOverALaneOfItsOwnAndAWorkspaceAlwaysTheSame()
+    {
+        var host = new Host("mini", "dev@mini");
+
+        var words = Shell.LongCommand(host, "true", "workspaces/Sample/main");
+        var again = Shell.LongCommand(host, "true", "workspaces/Sample/main");
+
+        Assert.Equal(words, again);
+        Assert.Contains("ControlMaster=auto", words);
+        Assert.Contains(words, word => word.StartsWith($"ControlPath={RemoteShell.SharedSocket}-", StringComparison.Ordinal));
+        Assert.DoesNotContain($"ControlPath={RemoteShell.SharedSocket}", words);
+        Assert.InRange(RemoteShell.LaneOf("workspaces/Sample/main"), 0, RemoteShell.Lanes - 1);
+    }
+
+    [Fact]
+    public void Command_SharingTurnedOff_OpensAConnectionOfItsOwn()
+    {
+        var shell = new RemoteShell(Options.Create(new BuildOptions { SshShareMinutes = 0 }));
+
+        var words = shell.Command(new Host("mini", "dev@mini"), "true");
+
+        Assert.DoesNotContain(words, word => word.StartsWith("Control", StringComparison.Ordinal));
+    }
+
+    /// <summary>rsync takes its remote shell as one line and splits it on spaces, so the line carries the same options and no word with a space in it.</summary>
+    [Fact]
+    public void SshLine_ForRsync_CarriesTheSameOptionsInOneLine()
+    {
+        Assert.Equal(string.Join(' ', Shell.Ssh), Shell.SshLine);
+        Assert.DoesNotContain(Shell.Ssh, word => word.Contains(' ', StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Command_AnotherHost_KeepsASingleQuoteOfTheScript()
     {

@@ -40,8 +40,11 @@ public interface IBuilder
     /// <summary>The sessions this server keeps to its hosts for copies that are gone from this machine, by name: each holds a connection for nothing.</summary>
     Task<IReadOnlyList<string>> StrandedAsync(CancellationToken cancellationToken);
 
-    /// <summary>What lies under the host's root: every workspace of this server's, the derived data, the images and build cache, the packages, the room left.</summary>
-    Task<Answer<Survey>> SurveyAsync(Host host, CancellationToken cancellationToken);
+    /// <summary>Puts to rest the sessions this server keeps to the host for the workspaces of <paramref name="keys"/>, so they hold no connection until their next delivery; answers the names of those it paused.</summary>
+    Task<IReadOnlyList<string>> RestAsync(Host host, IReadOnlyList<WorkspaceKey> keys, CancellationToken cancellationToken);
+
+    /// <summary>What lies under the host's root: every workspace of this server's, the derived data, the images and build cache, the packages, the room left; with <paramref name="isSized"/> false no size is measured, each is 0, and the survey takes a second where it took eight.</summary>
+    Task<Answer<Survey>> SurveyAsync(Host host, bool isSized, CancellationToken cancellationToken);
 
     /// <summary>Removes one item of a sweep from the host; a workspace only when it carries this server's marker.</summary>
     Task<Answer<bool>> CarryOutAsync(Host host, SweepItem item, CancellationToken cancellationToken);

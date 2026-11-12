@@ -26,7 +26,7 @@ public static class ToolDescriptions
         build there stays incremental. A linked worktree is delivered without its .git. A delivery may take up to 600
         seconds. With Sync set to mutagen in the settings a session keeps the workspace mirrored as the copy changes,
         a delivery only waits for it to catch up and names no files, and dryRun still lists the difference through
-        rsync. build_run delivers by itself before it runs, so call this to check a delivery, not before every run.
+        rsync; the session of a workspace left alone is paused after a run and resumed by its next delivery. build_run delivers by itself before it runs, so call this to check a delivery, not before every run.
         """;
 
     /// <summary>The path parameter of build_sync.</summary>
@@ -173,14 +173,15 @@ public static class ToolDescriptions
         plan, and only it, is carried out when called again with the planId. Nothing on a host is the only copy of
         anything, so a sweep erases. The scopes are {Scopes}: one workspace (the copy at path, or repository and
         branch), every workspace of a repository, what has gone stale — workspaces not built for 14 days, Xcode's
-        derived data and test bundles inside a copy nothing wrote into for 7 days, derived data of workspaces that
+        derived data inside a copy nothing wrote into for 7 days and test bundles there for 30, derived data of workspaces that
         are gone, images older than 7 days, build cache not used for 6 hours, logs older than 30 days, and the
         versions an update left behind: SDKs no settings and no workspace's global.json name, build tools and NDKs
         older than the newest unless the settings name them, toolchain images the settings do not name — or
         everything under the root but the SDK; either also ends the sessions this machine keeps for copies that are
         gone from it. A plan is kept 10 minutes. build_run sweeps by itself: after each run
-        a repository's stale workspaces, the quiet outputs inside its copies and the build cache past its hours, and
-        the caches before one when the host has less than 20 GB free.
+        a repository's stale workspaces, the quiet outputs inside its copies and the build cache past its hours, the
+        whole caches scope once a day, and the caches before a run when the host has less than 20 GB free; so this
+        tool is for a workspace, a repository or everything, and for caches only to see or have them now.
         """;
 
     /// <summary>The scope parameter of build_clean.</summary>

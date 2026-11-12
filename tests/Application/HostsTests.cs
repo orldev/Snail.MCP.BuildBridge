@@ -17,6 +17,37 @@ public sealed class HostsTests
         return new Hosts(Options.Create(new BuildOptions { Hosts = [.. settings] }), builder);
     }
 
+    /// <summary>A host that built a moment ago can still build: its answer is kept for a minute, forgotten when something on it changes, and the list of hosts always asks anew.</summary>
+    [Fact]
+    public async Task ReadyAsync_AHostProbedAMomentAgo_IsNotProbedAgainUntilItIsForgotten()
+    {
+        var builder = new FakeBuilder();
+        builder.Up[Mini.Name] = new HostState(Mini, true, [], 400, null);
+        var hosts = Of(builder, Mini);
+
+        await hosts.ReadyAsync(null, [], CancellationToken.None);
+        await hosts.ReadyAsync(null, [], CancellationToken.None);
+        Assert.Single(builder.Probed);
+
+        hosts.Forget(Mini);
+        await hosts.ReadyAsync(null, [], CancellationToken.None);
+        await hosts.ProbeAllAsync(CancellationToken.None);
+
+        Assert.Equal(3, builder.Probed.Count);
+    }
+
+    [Fact]
+    public async Task ReadyAsync_AHostThatWasDown_IsAskedAgainEveryTime()
+    {
+        var builder = new FakeBuilder();
+        var hosts = Of(builder, Mini);
+
+        await hosts.ReadyAsync(null, [], CancellationToken.None);
+        await hosts.ReadyAsync(null, [], CancellationToken.None);
+
+        Assert.Equal(2, builder.Probed.Count);
+    }
+
     [Fact]
     public void Named_NoHostsConfigured_SaysWhereTheyAreNamed()
     {

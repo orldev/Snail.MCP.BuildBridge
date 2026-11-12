@@ -3,6 +3,7 @@ using Snail.MCP.BuildBridge.Adapters;
 using Snail.MCP.BuildBridge.Application.Ports;
 using Snail.MCP.BuildBridge.Configuration;
 using Snail.MCP.BuildBridge.Tests.Application;
+using Snail.Sdk.Mcp.Hosting.Answers;
 using Snail.Sdk.Mcp.Testing;
 
 namespace Snail.MCP.BuildBridge.Tests.Adapters;
@@ -43,6 +44,46 @@ public sealed class RefusalTypesTests
         var shell = new RemoteShell(Settings);
 
         return new SshBuilder(programs, new RsyncCourier(programs, new FakeCopies(), shell, Settings, TimeProvider.System), shell, Settings, TimeProvider.System);
+    }
+
+    /// <summary>A courier whose sessions hold the host's connections until they are put to rest.</summary>
+    private sealed class CrowdingCourier : ICourier
+    {
+        public bool IsResting { get; private set; }
+
+        public Task<Answer<Delivery>> DeliverAsync(Host host, LocalCopy copy, bool isDryRun, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task ForgetAsync(Host host, WorkspaceKey key, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<string>> StrandedAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<string>>([]);
+
+        public Task<IReadOnlyList<string>> RestAsync(Host host, IReadOnlyList<WorkspaceKey> keys, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<string>>([]);
+
+        public Task<IReadOnlyList<string>> RestAsync(CancellationToken cancellationToken)
+        {
+            IsResting = true;
+
+            return Task.FromResult<IReadOnlyList<string>>(["s3l-sample-main-mini"]);
+        }
+
+        public Task EndAsync(string name, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// A Mac's sshd has forty-two connections to give, and this machine's sessions can hold them all: a host that closes
+    /// the connection before its greeting is asked again once the sessions were put to rest, and answers.
+    /// </summary>
+    [Fact]
+    public async Task ProbeAsync_AHostWhoseConnectionsTheSessionsHold_AnswersOnceTheyRest()
+    {
+        var courier = new CrowdingCourier();
+        var programs = new ScriptedPrograms(_ => courier.IsResting ? new ProgramRun(0, "home=/Users/dev\nfree=100\n", string.Empty) : new ProgramRun(255, string.Empty, "Connection closed by 192.0.2.10 port 22"));
+        var builder = new SshBuilder(programs, courier, new RemoteShell(Settings), Settings, TimeProvider.System);
+
+        var state = await builder.ProbeAsync(Mini, CancellationToken.None);
+
+        Assert.True(courier.IsResting);
+        Assert.True(state.IsReachable);
     }
 
     private static string Log() => Path.Combine(TestFolder.Create(), "provision.log");
@@ -122,7 +163,7 @@ public sealed class RefusalTypesTests
     [Fact]
     public async Task SurveyAsync_HostThatDoesNotAnswer_IsNotSurveyed()
     {
-        var answer = await Builder(_ => Broken).SurveyAsync(Mini, CancellationToken.None);
+        var answer = await Builder(_ => Broken).SurveyAsync(Mini, true, CancellationToken.None);
 
         Assert.Equal("notSurveyed", answer.Type);
     }
@@ -141,7 +182,7 @@ public sealed class RefusalTypesTests
         var programs = new ScriptedPrograms(program => program == Settings.Value.Mutagen ? ProgramRun.Missing(program) : Ended);
         var shell = new RemoteShell(Settings);
         var copies = new FakeCopies();
-        var courier = new MutagenCourier(programs, copies, new RsyncCourier(programs, copies, shell, Settings, TimeProvider.System), shell, Settings, TimeProvider.System);
+        var courier = new MutagenCourier(programs, copies, new RsyncCourier(programs, copies, shell, Settings, TimeProvider.System), shell, Settings, TimeProvider.System, TestFolder.Create());
 
         var answer = await courier.DeliverAsync(Mini, Copy, false, CancellationToken.None);
 

@@ -29,7 +29,7 @@ public sealed class RunsChaosTests
         var logs = new Logs(TimeProvider.System, TestFolder.Create());
         var turns = new WorkspaceTurns();
 
-        return (new Runs(hosts, copies, builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), turns, new FakeSecrets(), options), new Deliveries(hosts, copies, builder, turns), builder);
+        return (new Runs(hosts, copies, builder, logs, new Feeds(builder, logs, options, TimeProvider.System), new Sweeps(builder, logs, options, TimeProvider.System), turns, new FakeSecrets(), options), new Deliveries(hosts, copies, builder, turns), builder);
     }
 
     /// <summary>
@@ -92,7 +92,7 @@ public sealed class RunsChaosTests
         var work = Enumerable.Range(0, 50).Select(number =>
         {
             var copies = new FakeCopies { Copy = new LocalCopy($"/Users/me/Sample{number}", $"Sample{number}", "main", null, false) };
-            var runs = new Runs(hosts, copies, builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), new FakeSecrets(), options);
+            var runs = new Runs(hosts, copies, builder, logs, new Feeds(builder, logs, options, TimeProvider.System), new Sweeps(builder, logs, options, TimeProvider.System), new WorkspaceTurns(), new FakeSecrets(), options);
 
             return runs.RunAsync(copies.Copy.Path, BuildKind.Dotnet, ["build"], [], [], null, new Quiet(), CancellationToken.None);
         });

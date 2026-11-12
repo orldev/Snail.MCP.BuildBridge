@@ -40,6 +40,103 @@
           "description": "Free gigabytes on a host below which a run sweeps the caches first.",
           "isRequired": false,
           "default": "20"
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_SYNC",
+          "description": "What carries a copy to a host: rsync, a mirror before every run, or mutagen, a session per workspace that keeps it mirrored as the copy changes.",
+          "isRequired": false,
+          "default": "rsync"
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_FEEDS__0__NAME",
+          "description": "The name of a NuGet source of this machine mirrored to every host, as both NuGet configurations know it; add FEEDS__1 and so on for more.",
+          "isRequired": false
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_FEEDS__0__PATH",
+          "description": "That feed's folder on this machine.",
+          "isRequired": false
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_SECRETS__0__NAME",
+          "description": "The name of a variable a run gets from this machine; add SECRETS__1 and so on for more. Its value never passes through a tool, a job or a log.",
+          "isRequired": false
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_SECRETS__0__KEYCHAIN",
+          "description": "The service of the generic password in this machine's keychain that holds the secret's value; use this or SECRETS__0__VALUE in the settings file, never a value in a registration.",
+          "isRequired": false
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_SECRETS__0__REPOSITORY",
+          "description": "The repository whose runs get the secret; every repository when empty.",
+          "isRequired": false
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_RUN_SECONDS",
+          "description": "Seconds a build may run.",
+          "isRequired": false,
+          "default": "3600"
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_SSH_SHARE_MINUTES",
+          "description": "Minutes the connection to a host stays open after its last command, every command going over a shared one; zero or less opens a connection for each.",
+          "isRequired": false,
+          "default": "30"
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_SESSIONS_AWAKE",
+          "description": "The most Mutagen sessions kept awake at once, each holding one of the 42 connections a Mac's sshd has; zero or less sets no limit.",
+          "isRequired": false,
+          "default": "30"
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_SESSION_IDLE_MINUTES",
+          "description": "Minutes a workspace may go unused before its Mutagen session is paused until the next delivery; zero or less never pauses one.",
+          "isRequired": false,
+          "default": "30"
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_PROBE_KEEP_SECONDS",
+          "description": "Seconds a host's answer to a probe is gone by before a run probes it again; zero or less probes before every run.",
+          "isRequired": false,
+          "default": "60"
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_SWEEP_MINUTES",
+          "description": "Minutes between two sweeps after a run of one repository on one host; zero or less sweeps after every run.",
+          "isRequired": false,
+          "default": "10"
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_CACHES_SWEEP_HOURS",
+          "description": "Hours between two sweeps of the whole caches scope carried out by themselves after a run; zero or less leaves that scope to build_clean and to a host short of room.",
+          "isRequired": false,
+          "default": "24"
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_WORKSPACE_DAYS",
+          "description": "Days a workspace may go without a build before a sweep removes it.",
+          "isRequired": false,
+          "default": "14"
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_OUTPUT_DAYS",
+          "description": "Days Xcode's derived data inside a workspace's copy may go unwritten before a sweep removes it.",
+          "isRequired": false,
+          "default": "7"
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_RESULT_DAYS",
+          "description": "Days a test bundle inside a workspace's copy is kept after its last write.",
+          "isRequired": false,
+          "default": "30"
+        },
+        {
+          "name": "SNAIL_MCP_BUILDBRIDGE_IDLE_TIMEOUT_MINUTES",
+          "description": "Minutes without an MCP message after which the server stops, unless a job is running; zero or less never stops it.",
+          "isRequired": false,
+          "default": "60"
         }
       ]
     }

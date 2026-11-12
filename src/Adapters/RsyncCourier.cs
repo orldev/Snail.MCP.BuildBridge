@@ -43,6 +43,12 @@ public sealed class RsyncCourier(IPrograms programs, ICopies copies, RemoteShell
     /// <remarks>rsync keeps nothing between deliveries, so there is nothing to let go of.</remarks>
     public Task ForgetAsync(Host host, WorkspaceKey key, CancellationToken cancellationToken) => Task.CompletedTask;
 
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<string>> StrandedAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<string>>([]);
+
+    /// <inheritdoc/>
+    public Task EndAsync(string name, CancellationToken cancellationToken) => Task.CompletedTask;
+
     /// <summary>What git ignores in the workspace on the host: what the host built for itself under an ignored path, which exists there and not here, and which --delete would otherwise take.</summary>
     /// <remarks>Proven by a chaos test on 2026-11-03: a folder the host made under an ignored path absent on this machine was gone after the next delivery.</remarks>
     private async Task<IReadOnlyList<string>> IgnoredOnHostAsync(Host host, WorkspaceKey key, CancellationToken cancellationToken)

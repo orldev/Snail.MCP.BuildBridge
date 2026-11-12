@@ -27,6 +27,9 @@ namespace Snail.MCP.BuildBridge.Adapters;
 /// </remarks>
 public sealed class MutagenCourier(IPrograms programs, ICopies copies, RsyncCourier rsync, RemoteShell shell, IOptions<BuildOptions> options, TimeProvider clock) : ICourier
 {
+    /// <summary>What every session's name of this server starts with.</summary>
+    public const string SessionPrefix = "s3l-";
+
     /// <summary>The label on a session carrying the hash of what shaped it.</summary>
     public const string ShapeLabel = "s3l.shape";
 
@@ -74,6 +77,48 @@ public sealed class MutagenCourier(IPrograms programs, ICopies copies, RsyncCour
     /// <inheritdoc/>
     public async Task ForgetAsync(Host host, WorkspaceKey key, CancellationToken cancellationToken) =>
         await TerminateAsync(SessionOf(host, key), cancellationToken);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A session outlives the copy it mirrors: a worktree removed or a scratch folder erased leaves it connected to the
+    /// host for ever, and the host's sshd takes 42 connections at once — on 2026-11-12 eleven of 57 sessions on this
+    /// machine mirrored a folder that was gone. Only sessions carrying this server's label are looked at.
+    /// </remarks>
+    public async Task<IReadOnlyList<string>> StrandedAsync(CancellationToken cancellationToken)
+    {
+        var run = await programs.RunAsync(options.Value.Mutagen, ["sync", "list", "--label-selector", ShapeLabel, "--template", "{{json .}}"], null, Patience, cancellationToken);
+
+        return run.IsSuccess ? StrandedIn(run.Output, Directory.Exists) : [];
+    }
+
+    /// <inheritdoc/>
+    public async Task EndAsync(string name, CancellationToken cancellationToken)
+    {
+        if (name.StartsWith(SessionPrefix, StringComparison.Ordinal))
+            await TerminateAsync(name, cancellationToken);
+    }
+
+    /// <summary>The names of the sessions in Mutagen's JSON whose copy on this machine <paramref name="isThere"/> says is gone.</summary>
+    internal static IReadOnlyList<string> StrandedIn(string json, Func<string, bool> isThere)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return [];
+
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind != JsonValueKind.Array)
+            return [];
+
+        var stranded = new List<string>();
+        foreach (var session in document.RootElement.EnumerateArray())
+        {
+            string? name = session.TryGetProperty("name", out var named) ? named.GetString() : null;
+            string? copy = session.TryGetProperty("alpha", out var alpha) && alpha.TryGetProperty("path", out var path) ? path.GetString() : null;
+            if (name is not null && copy is not null && name.StartsWith(SessionPrefix, StringComparison.Ordinal) && !isThere(copy))
+                stranded.Add(name);
+        }
+
+        return stranded;
+    }
 
     /// <summary>The session's name for a workspace on a host: letters, digits and dashes, as Mutagen names sessions, cut to its 64 with a hash of the whole so two long names never share one.</summary>
     public static string SessionOf(Host host, WorkspaceKey key)

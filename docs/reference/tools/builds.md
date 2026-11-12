@@ -384,7 +384,8 @@ derived data and test bundles inside a copy nothing wrote into for 7 days, deriv
 are gone, images older than 7 days, build cache not used for 6 hours, logs older than 30 days, and the
 versions an update left behind: SDKs no settings and no workspace's global.json name, build tools and NDKs
 older than the newest unless the settings name them, toolchain images the settings do not name — or
-everything under the root but the SDK. A plan is kept 10 minutes. build_run sweeps by itself: after each run
+everything under the root but the SDK; either also ends the sessions this machine keeps for copies that are
+gone from it. A plan is kept 10 minutes. build_run sweeps by itself: after each run
 a repository's stale workspaces, the quiet outputs inside its copies and the build cache past its hours, and
 the caches before one when the host has less than 20 GB free.
 

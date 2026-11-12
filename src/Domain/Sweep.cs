@@ -76,6 +76,9 @@ public enum SweepKind
     /// <summary>The NuGet packages, Gradle's own files, npm's cache and Playwright's browsers under the root.</summary>
     Packages,
 
+    /// <summary>A session of this machine to a host, by name, whose copy here is gone.</summary>
+    Session,
+
     /// <summary>A .NET SDK under the root, by version, that no settings and no workspace name any more.</summary>
     Sdk,
 

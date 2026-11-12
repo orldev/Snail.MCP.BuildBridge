@@ -198,6 +198,7 @@ A host that is this machine — `localhost` — is worked without ssh, straight 
 | `Excludes` | `bin obj artifacts TestResults BenchmarkDotNet.Artifacts node_modules .DS_Store` | Folders a delivery never sends. |
 | `TransferSeconds`, `RunSeconds`, `ProbeSeconds` | 600, 3600, 20 | How long a delivery, a run, a probe may take. |
 | `WorkspaceDays`, `JobDays`, `ImageDays`, `BuildCacheHours`, `OutputDays` | 14, 30, 7, 6, 7 | The ages a sweep goes by. |
+| `IdleTimeoutMinutes` | 60 | Minutes without an MCP message after which the server stops, unless a job is running: a client lost without closing its input leaves no process behind. Zero or less never stops it. |
 | `LowDiskGigabytes` | 20 | Free gigabytes on a host below which a run sweeps the caches first. |
 
 A setting the server cannot use stops it at the start, in one line on stderr and exit code 1, that names the variable,
@@ -222,6 +223,7 @@ SNAIL_MCP_BUILDBRIDGE_RUN_SECONDS (or RunSeconds in the settings file) is '0'; i
 | build tools and NDKs | under the root | older than the newest, unless the settings name them; `caches` |
 | toolchain images the settings do not name | the label `snail.image` and the tag | `caches` |
 | logs on this machine | under the server's data folder | older than `JobDays` |
+| a Mutagen session whose copy is gone from this machine | the label `s3l.shape` and the name | after every run; `caches`, `everything` |
 
 The SDK under the root stays: a sweep never costs a download. To start over, erase `~/.s3l-build` and provision again.
 A Mutagen session goes with its workspace; `mutagen sync list` on this machine shows the ones there are, named

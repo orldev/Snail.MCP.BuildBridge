@@ -37,6 +37,9 @@ public interface IBuilder
     /// <summary>Puts a supply under the host's root — Android SDK packages, a .NET SDK, workloads — those not there yet; answers what it put in place, in the supply's words, or why it could not — a licence only a person accepts among the reasons.</summary>
     Task<Answer<IReadOnlyList<string>>> SupplyAsync(Host host, Supply supply, CancellationToken cancellationToken);
 
+    /// <summary>The sessions this server keeps to its hosts for copies that are gone from this machine, by name: each holds a connection for nothing.</summary>
+    Task<IReadOnlyList<string>> StrandedAsync(CancellationToken cancellationToken);
+
     /// <summary>What lies under the host's root: every workspace of this server's, the derived data, the images and build cache, the packages, the room left.</summary>
     Task<Answer<Survey>> SurveyAsync(Host host, CancellationToken cancellationToken);
 

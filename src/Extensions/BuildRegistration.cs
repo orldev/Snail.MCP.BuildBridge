@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Snail.MCP.BuildBridge.Adapters;
@@ -13,10 +14,10 @@ public static class BuildRegistration
 {
     extension(IServiceCollection services)
     {
-        /// <summary>Everything a tool reaches a host through, with the settings read from the settings file and the <c>SNAIL_MCP_BUILDBRIDGE_</c> variables only.</summary>
-        public IServiceCollection AddBuilders()
+        /// <summary>Everything a tool reaches a host through, bound from <paramref name="settings"/>: the settings file and the <c>SNAIL_MCP_BUILDBRIDGE_</c> variables, read once by the program.</summary>
+        public IServiceCollection AddBuilders(IConfiguration settings)
         {
-            services.AddOptions<BuildOptions>().Bind(BuildSettings.Read()).ValidateOnStart();
+            services.AddOptions<BuildOptions>().Bind(settings).ValidateOnStart();
             services.AddSingleton<IValidateOptions<BuildOptions>, BuildOptionsValidation>();
             services.AddSingleton(TimeProvider.System);
             services.AddSingleton<IPrograms, Programs>();

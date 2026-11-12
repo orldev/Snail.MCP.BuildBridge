@@ -308,6 +308,9 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
         """;
 
     /// <inheritdoc/>
+    public Task<IReadOnlyList<string>> StrandedAsync(CancellationToken cancellationToken) => courier.StrandedAsync(cancellationToken);
+
+    /// <inheritdoc/>
     public async Task<Answer<Survey>> SurveyAsync(Host host, CancellationToken cancellationToken)
     {
         var run = await RunScriptAsync(host, Surveys.Script(host), cancellationToken, TimeSpan.FromSeconds(options.Value.TransferSeconds));
@@ -320,6 +323,12 @@ public sealed class SshBuilder(IPrograms programs, ICourier courier, RemoteShell
     /// <inheritdoc/>
     public async Task<Answer<bool>> CarryOutAsync(Host host, SweepItem item, CancellationToken cancellationToken)
     {
+        if (item.Kind == SweepKind.Session)
+        {
+            await courier.EndAsync(item.Name, cancellationToken);
+
+            return Answer.Ok(true);
+        }
         if (item.Kind == SweepKind.Workspace)
         {
             var parts = item.Name.Split('/', 2);

@@ -104,6 +104,11 @@ internal sealed class FakeBuilder : IBuilder
         return Task.FromResult(SupplyError is { } error ? Answer.Failed<IReadOnlyList<string>>(error) : Answer.Ok(supply.Words));
     }
 
+    /// <summary>The sessions whose copy is gone.</summary>
+    public List<string> Stranded { get; } = [];
+
+    public Task<IReadOnlyList<string>> StrandedAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<string>>(Stranded);
+
     /// <summary>What a survey of any host finds.</summary>
     public Survey? Found { get; set; }
 

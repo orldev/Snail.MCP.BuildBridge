@@ -114,6 +114,9 @@ public sealed class BuildOptions
     /// <summary>The secrets runs get in their environment, from this machine: each a name, a value or a keychain service, and the repository it is for.</summary>
     public SecretSetting[] Secrets { get; set; } = [];
 
+    /// <summary>Minutes without an MCP message after which the server stops, unless a job is running; zero or less never stops it.</summary>
+    public int IdleTimeoutMinutes { get; set; } = 60;
+
     /// <summary>Days a workspace may go without a build before a sweep removes it.</summary>
     public int WorkspaceDays { get; set; } = 14;
 

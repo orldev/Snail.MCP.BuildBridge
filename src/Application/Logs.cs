@@ -5,10 +5,12 @@ using Snail.Sdk.Mcp.Hosting;
 namespace Snail.MCP.BuildBridge.Application;
 
 /// <summary>Where the log of each job goes on this machine: the server's data folder, one file per job.</summary>
-public sealed class Logs(TimeProvider clock)
+/// <param name="clock">The clock a log is named by.</param>
+/// <param name="folder">The folder the logs go to; the server's data folder when not given — a test names one of its own, since tests once filled the developer's.</param>
+public sealed class Logs(TimeProvider clock, string? folder = null)
 {
     /// <summary>The folder the logs are in.</summary>
-    public string Folder { get; } = Path.Combine(ServerFolders.DataDirectory(BuildSettings.Name), "jobs");
+    public string Folder { get; } = folder ?? Path.Combine(ServerFolders.DataDirectory(BuildSettings.Name), "jobs");
 
     private const int Chunk = 64 * 1024;
 

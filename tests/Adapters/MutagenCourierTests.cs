@@ -120,6 +120,24 @@ public sealed class MutagenCourierTests
         Assert.Null(MutagenCourier.ShapeIn("[]"));
     }
 
+    /// <summary>Of this server's sessions, those whose copy is gone are the stranded ones; a session of another name is never touched.</summary>
+    [Fact]
+    public void StrandedIn_MutagensList_IsTheSessionsOfThisServerWhoseCopyIsGone()
+    {
+        const string json = """
+            [
+              {"name":"s3l-sample-main-mini","alpha":{"protocol":"local","path":"/Users/me/Sample"},"labels":{"s3l.shape":"a"}},
+              {"name":"s3l-sample-wt-feat-mini","alpha":{"protocol":"local","path":"/Users/me/Sample.wt"},"labels":{"s3l.shape":"b"}},
+              {"name":"mine","alpha":{"protocol":"local","path":"/Users/me/Gone"},"labels":{"s3l.shape":"c"}}
+            ]
+            """;
+
+        var stranded = MutagenCourier.StrandedIn(json, path => path == "/Users/me/Sample");
+
+        Assert.Equal(["s3l-sample-wt-feat-mini"], stranded);
+        Assert.Empty(MutagenCourier.StrandedIn(string.Empty, _ => false));
+    }
+
     [Fact]
     public void BetaOf_AnotherHost_IsTheAddressAndTheCopyUnderItsRoot()
     {

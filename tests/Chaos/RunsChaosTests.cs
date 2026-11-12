@@ -3,6 +3,7 @@ using Snail.MCP.BuildBridge.Application;
 using Snail.MCP.BuildBridge.Configuration;
 using Snail.MCP.BuildBridge.Tests.Application;
 using Snail.Sdk.Mcp.Hosting.Jobs;
+using Snail.Sdk.Mcp.Testing;
 
 namespace Snail.MCP.BuildBridge.Tests.Chaos;
 
@@ -25,7 +26,7 @@ public sealed class RunsChaosTests
         var options = Options.Create(new BuildOptions { Hosts = [new HostSetting { Name = Mini.Name, Address = Mini.Address }] });
         var hosts = new Hosts(options, builder);
         var copies = new FakeCopies();
-        var logs = new Logs(TimeProvider.System);
+        var logs = new Logs(TimeProvider.System, TestFolder.Create());
         var turns = new WorkspaceTurns();
 
         return (new Runs(hosts, copies, builder, logs, new Sweeps(builder, logs, options, TimeProvider.System), turns, new FakeSecrets(), options), new Deliveries(hosts, copies, builder, turns), builder);
@@ -86,7 +87,7 @@ public sealed class RunsChaosTests
         var builder = new FakeBuilder();
         builder.Up[Mini.Name] = new HostState(Mini, true, [new Toolchain(Capability.Dotnet, "1")], 400, null, "/Users/dev");
         var options = Options.Create(new BuildOptions { Hosts = [new HostSetting { Name = Mini.Name, Address = Mini.Address }] });
-        var logs = new Logs(TimeProvider.System);
+        var logs = new Logs(TimeProvider.System, TestFolder.Create());
         var hosts = new Hosts(options, builder);
         var work = Enumerable.Range(0, 50).Select(number =>
         {

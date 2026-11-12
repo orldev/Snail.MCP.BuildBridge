@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using Snail.MCP.BuildBridge.Application;
 using Snail.MCP.BuildBridge.Configuration;
 using Snail.Sdk.Mcp.Hosting;
+using Snail.Sdk.Mcp.Testing;
 
 namespace Snail.MCP.BuildBridge.Tests.Application;
 
@@ -14,7 +15,7 @@ public sealed class SweepsTests
         var builder = new FakeBuilder();
         builder.Found = new Survey(Mini, [new WorkspaceState(new WorkspaceKey("Sample", "old"), DateTimeOffset.UtcNow.AddDays(-30), 10)], [], [], 0, 0, 400);
 
-        return (new Sweeps(builder, new Logs(TimeProvider.System), Options.Create(new BuildOptions()), TimeProvider.System), builder);
+        return (new Sweeps(builder, new Logs(TimeProvider.System, TestFolder.Create()), Options.Create(new BuildOptions()), TimeProvider.System), builder);
     }
 
     [Fact]
@@ -27,6 +28,21 @@ public sealed class SweepsTests
 
         Assert.Equal(["Sample/old"], builder.CarriedOut.Select(item => item.Name));
         Assert.All(results, result => Assert.True(result.IsDone));
+    }
+
+    /// <summary>A session whose copy is gone from this machine holds a connection to the host for nothing: the sweep after a run ends it, and a caches plan shows it first.</summary>
+    [Fact]
+    public async Task AfterRunAsync_SessionsWhoseCopyIsGone_AreEndedAndACachesPlanNamesThem()
+    {
+        var (sweeps, builder) = Of();
+        builder.Stranded.Add("s3l-sample-gone-mini");
+
+        var plan = (await sweeps.PlanAsync(Mini, SweepScope.Caches, null, null, CancellationToken.None)).Value!;
+        var after = await sweeps.AfterRunAsync(Mini, "Other", CancellationToken.None);
+
+        Assert.Contains(plan.Items, item => item is { Kind: SweepKind.Session, Name: "s3l-sample-gone-mini" });
+        Assert.Equal(SweepKind.Session, Assert.Single(after).Item.Kind);
+        Assert.Contains(builder.CarriedOut, item => item.Name == "s3l-sample-gone-mini");
     }
 
     [Fact]

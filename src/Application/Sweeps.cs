@@ -30,6 +30,8 @@ public sealed class Sweeps(IBuilder builder, Logs logs, IOptions<BuildOptions> o
         var items = Sweep.Decide(survey, Rules, now, scope, workspace, repository).ToList();
         if (scope is SweepScope.Caches or SweepScope.Everything && OldLogs(now).Count is > 0 and var old)
             items.Add(new SweepItem(SweepKind.Logs, $"{Rules.JobDays}d", null, $"{old} logs older than {Rules.JobDays} days"));
+        if (scope is SweepScope.Caches or SweepScope.Everything)
+            items.AddRange(await StrandedAsync(cancellationToken));
 
         var plan = new SweepPlan(Guid.NewGuid().ToString("N")[..10], host, scope, items, now);
         _plans[plan.Id] = plan;
@@ -58,8 +60,17 @@ public sealed class Sweeps(IBuilder builder, Logs logs, IOptions<BuildOptions> o
         var items = Sweep.AfterRun(survey, Rules, now, repository).ToList();
         if (OldLogs(now).Count is > 0 and var old)
             items.Add(new SweepItem(SweepKind.Logs, $"{Rules.JobDays}d", null, $"{old} logs older than {Rules.JobDays} days"));
+        items.AddRange(await StrandedAsync(cancellationToken));
 
         return await CarryOutAsync(host, items, cancellationToken);
+    }
+
+    /// <summary>The sessions whose copy on this machine is gone, as items of a sweep: each holds a connection to its host for nothing.</summary>
+    private async Task<IReadOnlyList<SweepItem>> StrandedAsync(CancellationToken cancellationToken)
+    {
+        var stranded = await builder.StrandedAsync(cancellationToken);
+
+        return [.. stranded.Select(name => new SweepItem(SweepKind.Session, name, null, "its copy on this machine is gone"))];
     }
 
     /// <summary>The sweep before a run when <paramref name="state"/> shows the host short of room: the caches scope, carried out at once; nothing when there is room.</summary>

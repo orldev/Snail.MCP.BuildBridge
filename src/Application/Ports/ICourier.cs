@@ -16,4 +16,10 @@ public interface ICourier
 
     /// <summary>Lets go of whatever the courier keeps for a workspace — a session — because the workspace is being removed.</summary>
     Task ForgetAsync(Host host, WorkspaceKey key, CancellationToken cancellationToken);
+
+    /// <summary>What the courier still keeps for copies that are gone from this machine — sessions of a worktree removed, a scratch folder erased — by name.</summary>
+    Task<IReadOnlyList<string>> StrandedAsync(CancellationToken cancellationToken);
+
+    /// <summary>Lets go of one thing <see cref="StrandedAsync"/> named; a name that is not the courier's own is left alone.</summary>
+    Task EndAsync(string name, CancellationToken cancellationToken);
 }

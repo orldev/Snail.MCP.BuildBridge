@@ -35,7 +35,7 @@ public sealed class ProcessContractTests
         Assert.Equal(JsonValueKind.String, host["toolchains"]!["dotnet"]!.GetValueKind());
     }
 
-    [Fact]
+    [MacFact]
     public async Task Run_DotnetVersionInACopy_EndsSucceededWithItsLogReadableAndItsWorkspaceSweepable()
     {
         string root = TestFolder.Create();

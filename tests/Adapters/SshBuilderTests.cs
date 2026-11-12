@@ -27,7 +27,7 @@ public sealed class SshBuilderTests
 
     private static async Task<LocalCopy> CopyAsync(string repository) => (await Copies.ReadAsync(repository, CancellationToken.None)).Value!;
 
-    [Fact]
+    [MacFact]
     public async Task ProbeAsync_ThisMachine_AnswersWithItsToolchainsAndRoom()
     {
         var state = await Builder().ProbeAsync(LocalHost(), CancellationToken.None);
@@ -245,7 +245,7 @@ public sealed class SshBuilderTests
         Assert.False(File.Exists(witness));
     }
 
-    [Fact]
+    [MacFact]
     public async Task SurveyAsync_WorkspacesWithMarkers_AreFoundWithTheirAgeAndSize()
     {
         var host = LocalHost();
@@ -268,7 +268,7 @@ public sealed class SshBuilderTests
     }
 
     /// <summary>Measuring sizes was five seconds of a survey on a host with sixty workspaces: asked for none, the survey still finds every workspace and its age, each size 0.</summary>
-    [Fact]
+    [MacFact]
     public async Task SurveyAsync_WithoutSizes_FindsTheWorkspacesAndMeasuresNothing()
     {
         var host = LocalHost();
@@ -287,7 +287,7 @@ public sealed class SshBuilderTests
     /// The iOS copy of 2026-11-06: derived data under names of its own in artifacts, test bundles beside it and inside its
     /// logs, and folders that only look alike — logs beside a build, a bundle among packages.
     /// </summary>
-    [Fact]
+    [MacFact]
     public async Task SurveyAsync_OutputsInsideACopy_AreFoundOutermostWithTheirLastWrite()
     {
         var host = LocalHost();

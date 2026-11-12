@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Snail.MCP.BuildBridge.Adapters;
 using Snail.MCP.BuildBridge.Configuration;
+using Snail.MCP.BuildBridge.Tests.Support;
 using Snail.Sdk.Mcp.Testing;
 
 namespace Snail.MCP.BuildBridge.Tests.Adapters;
@@ -18,7 +19,7 @@ public sealed class ProvisioningTests
         return new SshBuilder(programs, new RsyncCourier(programs, new GitCopies(programs), shell, options, TimeProvider.System), shell, options, TimeProvider.System);
     }
 
-    [Fact]
+    [MacFact]
     public async Task ProvisionAsync_NoSdkAsked_MakesTheFoldersAndReportsEveryStep()
     {
         var host = new Host("here", "localhost", TestFolder.Create());
